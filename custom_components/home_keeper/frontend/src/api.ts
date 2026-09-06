@@ -2,6 +2,9 @@ import type {
   Asset,
   AssetDocument,
   Companion,
+  DeclarativeCompanion,
+  DeclarativeCompanionPreset,
+  DeclarativeCompanionPreviewResult,
   Hass,
   HassLabel,
   HomeKeeperOptions,
@@ -14,6 +17,21 @@ import type {
 } from './types';
 
 /** Thin wrappers around the Home Keeper websocket commands. */
+
+/**
+ * True for the websocket error every Home Keeper command sends while the config
+ * entry is not loaded (`_not_loaded` in `websocket_api.py`).
+ *
+ * The entry is unloaded for a moment on **every** reload, and Home Keeper reloads
+ * itself: adding a declarative companion that matches an entity materializes tasks
+ * and the reconciler reloads the entry to baseline the sensor watcher. A panel
+ * refresh that lands in that window gets this error from every command, so the
+ * caller has to wait and ask again rather than treat it as an answer. It is always
+ * temporary — the reload is already running when the error is sent.
+ */
+export function isNotLoaded(err: unknown): boolean {
+  return (err as { code?: string })?.code === 'not_loaded';
+}
 
 /** Read the companion integrations for the Settings → Companions section. */
 export async function getCompanions(hass: Hass): Promise<Companion[]> {
@@ -668,4 +686,96 @@ export async function getLoadedEntryIds(hass: Hass): Promise<Set<string>> {
   const ids = new Set<string>();
   for (const e of entries) if (e.state === 'loaded') ids.add(e.entry_id);
   return ids;
+}
+
+// ── declarative companions ───────────────────────────────────────────────────
+
+/** All stored declarative-companion specs for the Settings → Companions section. */
+export async function listDeclarativeCompanions(
+  hass: Hass,
+): Promise<DeclarativeCompanion[]> {
+  const res = await hass.callWS<{ companions: DeclarativeCompanion[] }>({
+    type: 'home_keeper/list_declarative_companions',
+  });
+  return res?.companions ?? [];
+}
+
+/** Create a new declarative-companion spec. Server validates + assigns the id. */
+export async function addDeclarativeCompanion(
+  hass: Hass,
+  companion: Partial<DeclarativeCompanion>,
+): Promise<DeclarativeCompanion> {
+  const res = await hass.callWS<{ companion: DeclarativeCompanion }>({
+    type: 'home_keeper/add_declarative_companion',
+    companion,
+  });
+  return res.companion;
+}
+
+/**
+ * Update fields of a stored spec by id. Any subset of the spec's fields may be sent.
+ *
+ * The spec id rides as `companion_id`, never as `id`: the websocket client stamps
+ * the connection's own message id over an `id` key, so a spec id sent under that
+ * name is silently replaced by an integer before it leaves the browser.
+ */
+export async function updateDeclarativeCompanion(
+  hass: Hass,
+  id: string,
+  updates: Partial<DeclarativeCompanion>,
+): Promise<DeclarativeCompanion> {
+  const res = await hass.callWS<{ companion: DeclarativeCompanion }>({
+    type: 'home_keeper/update_declarative_companion',
+    companion_id: id,
+    updates,
+  });
+  return res.companion;
+}
+
+/** Remove a spec and every managed task it materialized. `companion_id` for the
+ *  reason `updateDeclarativeCompanion` gives. */
+export async function deleteDeclarativeCompanion(
+  hass: Hass,
+  id: string,
+): Promise<void> {
+  await hass.callWS({
+    type: 'home_keeper/delete_declarative_companion',
+    companion_id: id,
+  });
+}
+
+/** The shipped presets the panel offers under "Add from preset". */
+export async function listDeclarativePresets(
+  hass: Hass,
+): Promise<DeclarativeCompanionPreset[]> {
+  const res = await hass.callWS<{ presets: DeclarativeCompanionPreset[] }>({
+    type: 'home_keeper/list_declarative_presets',
+  });
+  return res?.presets ?? [];
+}
+
+/**
+ * Live-preview a spec against the current entity registry. Returns matched
+ * entities (up to 10) plus a total count, and surfaces the 500-match hard cap
+ * via `over_cap`. Never writes.
+ */
+export async function previewDeclarativeCompanion(
+  hass: Hass,
+  companion: Partial<DeclarativeCompanion>,
+): Promise<DeclarativeCompanionPreviewResult> {
+  return hass.callWS<DeclarativeCompanionPreviewResult>({
+    type: 'home_keeper/preview_declarative_companion',
+    companion,
+  });
+}
+
+/**
+ * The distinct `platform` values in the entity registry, sorted. Feeds the
+ * Add-declarative-companion dialog's integration-picker autocomplete.
+ */
+export async function listInstalledIntegrations(hass: Hass): Promise<string[]> {
+  const res = await hass.callWS<{ integrations: string[] }>({
+    type: 'home_keeper/installed_integrations',
+  });
+  return res?.integrations ?? [];
 }

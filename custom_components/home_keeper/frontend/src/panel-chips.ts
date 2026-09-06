@@ -16,6 +16,7 @@ import type { PanelHost } from './panel-host';
 import { MDI_DEVICES } from './panel-icons';
 import type { Asset, Task } from './types';
 import {
+  HK_DOMAIN,
   areaName,
   brandLogoUrl,
   deviceDomain,
@@ -54,7 +55,13 @@ export function isManagedOrphan(p: PanelHost, task: Task): boolean {
 export function sourceOwnedTask(task: Task): boolean {
   return (
     (Boolean(task.source?.part) && !task.source?.part?.manual) ||
-    Boolean(task.source?.problem_sensor)
+    Boolean(task.source?.problem_sensor) ||
+    // A declarative companion is the third owner. Its reconciler rewrites name,
+    // device, area and the sensor binding from the recipe on every pass, so an
+    // Edit dialog over those fields is a form whose Save the next pass undoes, and
+    // a Duplicate makes an unmanaged lookalike that drifts. The task page offers
+    // Edit recipe instead — the surface that actually owns those values (#231).
+    Boolean(task.source?.declarative_companion)
   );
 }
 
@@ -116,7 +123,7 @@ export function managedChip(p: PanelHost, task: Task): string {
   }
   // A task Home Keeper synced from a sensor is "owned" by Home Keeper itself, so
   // "Managed by Home Keeper" reads as redundant — call it what it is: auto-synced.
-  const selfOwned = mb.integration === 'home_keeper';
+  const selfOwned = mb.integration === HK_DOMAIN;
   const label = selfOwned ? t('chip.autoSynced') : t('chip.managed', { name: mb.display_name });
   const tip = selfOwned ? t('chip.autoSynced.tip') : label;
   // A leading glyph gives the owner chip the same icon grammar as the device chip:

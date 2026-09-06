@@ -9,6 +9,7 @@ snapshot builder and Jinja rendering — is exercised by the integration suite.
 
 from datetime import datetime, timedelta, timezone
 
+import hk_backend_i18n as backend_i18n
 import hk_declarative_companions as dc
 import hk_declarative_presets as presets
 import pytest
@@ -501,7 +502,8 @@ def test_reconcile_creates_missing_tasks():
     assert created["next_due"] is None
     assert created["source"]["declarative_companion"]["spec_id"] == spec["id"]
     assert created["managed_by"]["deletion_protected"] is True
-    assert created["managed_by"]["completion_blocked"] is False
+    # The fixture's trigger sets clear_on_recover, so the recipe owns the clear.
+    assert created["managed_by"]["completion_blocked"] is True
 
 
 def test_reconcile_deletes_orphaned_tasks():
@@ -604,14 +606,18 @@ def test_reconcile_created_task_has_full_source_and_managed_by_shape():
         "entity_registry_id": m["entity_registry_id"],
         "entity_id": "sensor.hub_total_failed_pings",
     }
+    # The fixture spec sets ``clear_on_recover``, so the recipe owns the whole
+    # lifecycle and Done is withheld — see the completion-ownership tests below.
     assert created["managed_by"] == {
         "integration": "home_keeper",
         "display_name": spec["name"],
         "config_entry_id": ENTRY,
         "deletion_protected": True,
         "locked_fields": ["name", "recurrence_type", "device_id", "area_id", "sensor"],
-        "completion_blocked": False,
+        "completion_blocked": True,
+        "completion_prompt": created["managed_by"]["completion_prompt"],
     }
+    assert spec["name"] in created["managed_by"]["completion_prompt"]
 
 
 def test_reconcile_rerun_with_same_inputs_reports_no_change():
@@ -757,3 +763,226 @@ def test_firmware_has_no_integration_gate():
         presets.preset_by_id("firmware_update_available")["requires_integration"]
         is None
     )
+
+
+# --- Completion ownership (#231 follow-up) ----------------------------------
+#
+# A recipe whose trigger sets ``clear_on_recover`` owns its tasks' whole
+# lifecycle: the watcher arms on the crossing and completes on the recovery. A
+# hand-pressed Done on such a task is worse than a no-op — ``_evaluate_edge``
+# will not re-arm while the condition merely stays true, so completing an
+# "Update available" task dismisses a firmware update that is still pending, and
+# nothing brings it back until that update is installed and a different one
+# appears. ``completion_blocked`` is what tells the panel, the card, the to-do
+# list and the notification builder to withhold Done.
+#
+# A recipe *without* ``clear_on_recover`` is the opposite case: pressing Done is
+# the only way its task ever clears, so blocking it would strand the task.
+
+
+def test_managed_by_blocks_completion_when_the_recipe_auto_clears():
+    spec = dc.normalize_declarative_companion(_spec())
+
+    managed_by = dc.build_managed_by(spec, ENTRY)
+
+    assert managed_by["completion_blocked"] is True
+    assert managed_by["completion_prompt"]
+    assert spec["name"] in managed_by["completion_prompt"]
+
+
+def test_managed_by_keeps_completion_when_the_recipe_does_not_auto_clear():
+    spec = dc.normalize_declarative_companion(
+        _spec(
+            trigger={
+                "mode": "threshold",
+                "comparison": ">",
+                "value": 0,
+                "clear_on_recover": False,
+            }
+        )
+    )
+
+    managed_by = dc.build_managed_by(spec, ENTRY)
+
+    assert managed_by["completion_blocked"] is False
+    assert "completion_prompt" not in managed_by
+
+
+def test_managed_by_keeps_completion_for_a_usage_meter():
+    # A meter has no condition to recover from; completing it re-anchors the
+    # baseline, which is the whole point of the mode.
+    spec = dc.normalize_declarative_companion(
+        _spec(trigger={"mode": "usage", "target": 300})
+    )
+
+    managed_by = dc.build_managed_by(spec, ENTRY)
+
+    assert managed_by["completion_blocked"] is False
+
+
+def test_every_auto_clearing_preset_blocks_completion():
+    # Both shipped presets set clear_on_recover, so neither should offer Done.
+    for preset in presets.CATALOG_PRESETS:
+        spec = dc.normalize_declarative_companion(dict(preset["default_spec"]))
+        managed_by = dc.build_managed_by(spec, ENTRY)
+        assert managed_by["completion_blocked"] is True, preset["id"]
+
+
+# --- Localization of the completion prompt ----------------------------------
+#
+# The prompt is the only part of ``managed_by`` that is language-dependent, so
+# ``lang`` is threaded from the store (``hass.config.language``) through
+# ``reconcile_declarative_tasks`` and ``_build_task`` to ``build_managed_by``.
+# Each of those three hops has its own default, and a default that quietly wins
+# over the caller's value gives every household an English prompt.
+
+
+def test_completion_prompt_defaults_to_english():
+    spec = dc.normalize_declarative_companion(_spec())
+
+    prompt = dc.build_managed_by(spec, ENTRY)["completion_prompt"]
+
+    assert prompt == backend_i18n.resolve_string(
+        "en", "declarative_task.completion_prompt", name=spec["name"]
+    )
+
+
+def test_completion_prompt_follows_the_requested_language():
+    spec = dc.normalize_declarative_companion(_spec())
+
+    german = dc.build_managed_by(spec, ENTRY, lang="de")["completion_prompt"]
+
+    assert german == backend_i18n.resolve_string(
+        "de", "declarative_task.completion_prompt", name=spec["name"]
+    )
+    assert german != dc.build_managed_by(spec, ENTRY, lang="en")["completion_prompt"]
+
+
+def test_reconcile_carries_the_language_to_the_created_task():
+    # The whole hop, so a dropped keyword at any level shows up here rather than
+    # only in the function that lost it.
+    spec = _normalized_spec()
+    key, m = _match("sensor.hub_total_failed_pings", spec["id"])
+
+    _new, ops, _ = dc.reconcile_declarative_tasks(
+        spec,
+        {key: m},
+        tasks={},
+        rendered_by_key=_rendered(key),
+        config_entry_id=ENTRY,
+        now=NOW,
+        lang="de",
+    )
+
+    assert ops[0][1]["managed_by"]["completion_prompt"] == backend_i18n.resolve_string(
+        "de", "declarative_task.completion_prompt", name=spec["name"]
+    )
+
+
+def test_reconcile_carries_the_language_to_an_updated_task():
+    # The update path stamps its own ``managed_by``; it must localize too, or a
+    # language change relocalizes new tasks and leaves the existing ones behind.
+    spec = _normalized_spec()
+    key, m = _match("sensor.hub_total_failed_pings", spec["id"])
+    tasks, _ops, _ = dc.reconcile_declarative_tasks(
+        spec, {key: m}, {}, _rendered(key), config_entry_id=ENTRY, now=NOW
+    )
+
+    _new, ops, changed = dc.reconcile_declarative_tasks(
+        spec, {key: m}, tasks, _rendered(key), config_entry_id=ENTRY, now=NOW, lang="fr"
+    )
+
+    assert changed is True
+    assert ops[0][0] == "updated"
+    assert ops[0][1]["managed_by"]["completion_prompt"] == backend_i18n.resolve_string(
+        "fr", "declarative_task.completion_prompt", name=spec["name"]
+    )
+
+
+# --- What a materialized task carries from its entity -----------------------
+
+
+def test_created_task_takes_device_area_and_labels_from_the_match():
+    # `_build_task` copies the entity's placement onto the task and the recipe's
+    # labels from the template. Nothing asserted any of the three, so a mutant
+    # that read the wrong registry key produced an unplaced task in silence.
+    spec = _normalized_spec(
+        task_template={
+            "name_template": "Check on {{ friendly_name }}",
+            "notes_template": "",
+            "labels": ["hk-managed"],
+        }
+    )
+    entry = _entity("sensor.hub_total_failed_pings", device_id="dev1", area_id="area1")
+    key = (spec["id"], entry["entity_registry_id"])
+    match = {
+        "entity_registry_id": entry["entity_registry_id"],
+        "entity": entry,
+        "sensor": {"entity_id": entry["entity_id"], "mode": "state", "state": "on"},
+    }
+
+    _new, ops, _ = dc.reconcile_declarative_tasks(
+        spec, {key: match}, {}, _rendered(key), config_entry_id=ENTRY, now=NOW
+    )
+
+    created = ops[0][1]
+    assert created["device_id"] == "dev1"
+    assert created["area_id"] == "area1"
+    assert created["labels"] == ["hk-managed"]
+
+
+def test_created_task_has_no_labels_when_the_template_sets_none():
+    spec = _normalized_spec()
+    key, m = _match("sensor.hub_total_failed_pings", spec["id"])
+
+    _new, ops, _ = dc.reconcile_declarative_tasks(
+        spec, {key: m}, {}, _rendered(key), config_entry_id=ENTRY, now=NOW
+    )
+
+    assert ops[0][1]["labels"] == []
+
+
+def test_reconcile_rejects_an_unrendered_match_rather_than_inventing_a_name():
+    # The HA-bound caller renders every match, so a missing key is a bug on that
+    # side. The `("", "")` default keeps this from being a bare KeyError, and the
+    # empty name then fails `build_task`'s own validation — which is the point:
+    # the reconciler must not invent a name and materialize a task nobody asked
+    # for. A default that supplied real text would sail straight past this.
+    spec = _normalized_spec()
+    key, m = _match("sensor.hub_total_failed_pings", spec["id"])
+
+    with raises_exactly(TaskValidationError, "missing required field: 'name'"):
+        dc.reconcile_declarative_tasks(
+            spec, {key: m}, {}, rendered_by_key={}, config_entry_id=ENTRY, now=NOW
+        )
+
+
+def test_reconcile_indexes_every_task_of_this_spec_past_a_foreign_one():
+    # The index loop skips tasks belonging to other specs with `continue`. A
+    # `break` there stops at the first foreign task, so a task of this spec
+    # sitting after one in dict order is never seen — and gets recreated as a
+    # duplicate instead of updated.
+    spec = _normalized_spec()
+    key, m = _match("sensor.hub_total_failed_pings", spec["id"])
+    tasks, _ops, _ = dc.reconcile_declarative_tasks(
+        spec, {key: m}, {}, _rendered(key), config_entry_id=ENTRY, now=NOW
+    )
+    mine = next(iter(tasks.values()))
+    foreign = {
+        "id": "foreign-1",
+        "source": {
+            "declarative_companion": {
+                "spec_id": "other-spec",
+                "entity_registry_id": "r",
+            }
+        },
+    }
+    # Foreign first, so a `break` never reaches this spec's own task.
+    ordered = {"foreign-1": foreign, mine["id"]: mine}
+
+    _new, ops, changed = dc.reconcile_declarative_tasks(
+        spec, {key: m}, ordered, _rendered(key), config_entry_id=ENTRY, now=NOW
+    )
+
+    assert changed is False
+    assert ops == []

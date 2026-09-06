@@ -71,7 +71,7 @@ function closeCompletionDialog(p: PanelHost): void {
  * via `api.moveCompletion`, never `api.updateCompletion`.
  */
 export function openMoveCompletion(p: PanelHost, task: Task, ts: string): void {
-  p._moveCompletion = { open: true, task, ts, newTs: ts };
+  p._moveCompletion = { open: true, task, ts, newTs: ts, kind: 'completion' };
   p._render();
 }
 
@@ -84,7 +84,9 @@ async function submitMoveCompletion(p: PanelHost): Promise<void> {
   const m = p._moveCompletion;
   if (!p._hass || !m.task || !m.newTs) return;
   try {
-    await api.moveCompletion(p._hass, m.task.id, m.ts, m.newTs);
+    // Same dialog, two logs: `kind` says which list the entry being re-dated is in.
+    if (m.kind === 'skip') await api.moveSkip(p._hass, m.task.id, m.ts, m.newTs);
+    else await api.moveCompletion(p._hass, m.task.id, m.ts, m.newTs);
     closeMoveCompletion(p);
     await p._refresh();
   } catch (err) {

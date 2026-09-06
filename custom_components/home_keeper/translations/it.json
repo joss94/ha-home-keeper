@@ -105,10 +105,6 @@
           "name": "Richiedi la scansione dell'etichetta",
           "description": "Solo l'etichetta collegata può completare questa attività. Qualsiasi altro modo di segnarla come fatta viene rifiutato. Richiede un'etichetta."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
-        },
         "source": {
           "name": "Origine",
           "description": "Provenienza opaca di proprietà dell'integrazione che ha creato l'attività. Home Keeper la memorizza e la restituisce testualmente e non la ispeziona mai. Vedi docs/INTEGRATING.md."
@@ -120,6 +116,10 @@
         "completion_required_fields": {
           "name": "Campi di completamento obbligatori",
           "description": "Quali campi di metadati del completamento il pannello rende obbligatori quando il dettaglio del completamento è required — uno tra note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
         }
       }
     },
@@ -195,10 +195,6 @@
           "name": "Richiedi la scansione dell'etichetta",
           "description": "Solo l'etichetta collegata può completare questa attività. Richiede un'etichetta."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
-        },
         "source": {
           "name": "Origine",
           "description": "Provenienza opaca di proprietà dell'integrazione che ha creato l'attività. Vedi docs/INTEGRATING.md."
@@ -210,6 +206,10 @@
         "completion_required_fields": {
           "name": "Campi di completamento obbligatori",
           "description": "Quali campi di metadati del completamento il pannello rende obbligatori quando il dettaglio del completamento è required — uno tra note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
         }
       }
     },
@@ -333,7 +333,11 @@
         },
         "hours": {
           "name": "Ore",
-          "description": "Di quante ore rinviare l'attività (24 di default)."
+          "description": "Di quante ore rinviare l'attività (24 come predefinito). Ignorato se è impostato Fino a."
+        },
+        "until": {
+          "name": "Fino a",
+          "description": "Rinvia l'attività a questa data e ora esatte anziché di un numero di ore. Se lo imposti, il campo Ore non viene usato."
         },
         "origin": {
           "name": "Origine",
@@ -343,11 +347,23 @@
     },
     "skip_task": {
       "name": "Salta attività",
-      "description": "Fai avanzare un'attività alla sua prossima occorrenza senza registrare un completamento.",
+      "description": "Porta un'attività alla sua occorrenza successiva senza registrare un completamento. Il salto viene annotato a parte, quindi non conta mai come completamento.",
       "fields": {
         "task_id": {
           "name": "Nome o ID attività",
           "description": "L'id dell'attività da saltare. Funziona anche il suo nome. Il pannello mostra l'id."
+        },
+        "note": {
+          "name": "Nota",
+          "description": "Perché questa occorrenza è stata lasciata passare."
+        },
+        "who": {
+          "name": "Chi",
+          "description": "Chi ha deciso di saltarla."
+        },
+        "reading": {
+          "name": "Lettura del contatore",
+          "description": "Il valore del sensore collegato al momento del salto, per un'attività a consumo."
         },
         "origin": {
           "name": "Origine",
@@ -808,6 +824,64 @@
         }
       }
     },
+    "update_skip": {
+      "name": "Aggiorna salto",
+      "description": "Modifica i dettagli di un salto registrato, identificato dalla sua marca temporale. Il salto mantiene la data e la pianificazione non viene toccata.",
+      "fields": {
+        "task_id": {
+          "name": "Nome o ID attività",
+          "description": "L'id dell'attività di cui stai modificando il salto. Funziona anche il suo nome. Il pannello mostra l'id."
+        },
+        "ts": {
+          "name": "Marca temporale del salto",
+          "description": "La marca temporale ISO (ts) della voce di salto da modificare."
+        },
+        "note": {
+          "name": "Nota",
+          "description": "Perché questa occorrenza è stata lasciata passare. Un valore vuoto la cancella."
+        },
+        "who": {
+          "name": "Chi",
+          "description": "Chi ha deciso di saltarla. Un valore vuoto lo cancella."
+        },
+        "reading": {
+          "name": "Lettura del contatore",
+          "description": "Il valore del sensore collegato al momento del salto, per un'attività a consumo."
+        }
+      }
+    },
+    "delete_skip": {
+      "name": "Elimina salto",
+      "description": "Rimuove un salto registrato, identificato dalla sua marca temporale. Annullare il salto che ha azzerato per ultimo un contatore a consumo ripristina quel contatore.",
+      "fields": {
+        "task_id": {
+          "name": "Nome o ID attività",
+          "description": "L'id dell'attività di cui stai rimuovendo il salto. Funziona anche il suo nome. Il pannello mostra l'id."
+        },
+        "ts": {
+          "name": "Marca temporale del salto",
+          "description": "La marca temporale ISO (ts) della voce di salto da rimuovere."
+        }
+      }
+    },
+    "move_skip": {
+      "name": "Sposta salto",
+      "description": "Ridata un salto registrato, identificato dalla sua marca temporale attuale. La pianificazione dell'attività non viene toccata.",
+      "fields": {
+        "task_id": {
+          "name": "Nome o ID attività",
+          "description": "L'id dell'attività di cui stai spostando il salto. Funziona anche il suo nome. Il pannello mostra l'id."
+        },
+        "old_ts": {
+          "name": "Marca temporale attuale del salto",
+          "description": "La marca temporale ISO (ts) della voce di salto da spostare."
+        },
+        "new_ts": {
+          "name": "Nuova data",
+          "description": "La nuova data e ora a cui registrare il salto."
+        }
+      }
+    },
     "add_declarative_companion": {
       "name": "Aggiungi companion dichiarativo",
       "description": "Registra un companion dichiarativo — una ricetta che materializza un'attività di sensore gestita per ogni entità che corrisponde ai filtri (integrazione di destinazione + filtri di entità), con nome dell'attività e note tramite modelli Jinja. Solo amministratori."
@@ -943,12 +1017,6 @@
     "failed_to_store_file": {
       "message": "Impossibile salvare il file."
     },
-    "invalid_declarative_companion": {
-      "message": "{error}"
-    },
-    "declarative_companion_not_found": {
-      "message": "Companion dichiarativo non trovato: {spec_id}"
-    },
     "asset_ambiguous": {
       "message": "Several appliances are named {name}. Use an id instead: {ids}"
     },
@@ -960,6 +1028,12 @@
     },
     "task_ambiguous": {
       "message": "Several tasks are named {name}. Use an id instead: {ids}"
+    },
+    "invalid_declarative_companion": {
+      "message": "{error}"
+    },
+    "declarative_companion_not_found": {
+      "message": "Companion dichiarativo non trovato: {spec_id}"
     }
   }
 }

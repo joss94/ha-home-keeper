@@ -7,7 +7,7 @@
  * panel, so they stay here rather than widening the shared surface.
  */
 
-import type { Asset, Completion, DeclarativeCompanion, Task } from './types';
+import type { Asset, Completion, DeclarativeCompanion, Skip, Task } from './types';
 
 /**
  * The declarative-companion dialogs' state: the preset picker, or the add/edit form.
@@ -104,11 +104,19 @@ export interface MoveCompletionDialogState {
   ts: string;
   newTs?: string;
   error?: string;
+  /** Which log the entry lives in. Re-dating is the same interaction either way —
+   *  one date field on one entry — so the two share a dialog and differ only in
+   *  which service the save calls. */
+  kind?: 'completion' | 'skip';
 }
 /** One task's completion list within a history dialog (live or archived). */
 export interface HistoryGroup {
   name: string;
   completions: Completion[];
+  /** Logged skips, shown interleaved with the completions above but never counted
+   *  among them. Absent on an archived group — a deleted task's skips are not carried
+   *  onto the appliance, since the cadence they belong to is gone. */
+  skips?: Skip[];
   archived?: boolean;
   // Deletion context for the per-completion trash button: a live task carries
   // `taskId`; an archived (removed-task) group carries `assetId` + `archivedTaskId`.

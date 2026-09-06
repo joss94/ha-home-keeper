@@ -20,8 +20,11 @@ import {
 } from './markdown';
 import { renderAssetForm } from './panel-asset-form';
 import { sourceOwnedTask, wireDeviceChips } from './panel-chips';
+import { emptySkipState, emptySnoozeState, type SkipState, type SnoozeState } from './defer';
+import { DeferMenus } from './defer-dialogs';
 import { controls, wireControls } from './panel-controls';
 import { renderDeclarativeDialog } from './panel-declarative';
+import { openSkip, openSnooze, renderSkip, renderSnooze } from './panel-defer';
 import { detailView, wireDetail, wireDetailOpeners } from './panel-detail';
 import {
   openCompletionDialog,
@@ -130,6 +133,15 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     task: null,
     ts: '',
   };
+  _snooze: SnoozeState = emptySnoozeState();
+  _skip: SkipState = emptySkipState();
+  // The open deferral menu and the document handlers dismissing it. One at a time:
+  // opening a second closes the first, so this never holds a stale pair.
+  private readonly _deferMenus = new DeferMenus({
+    taskById: (id) => this._tasks.find((x) => x.id === id),
+    onSnooze: (task) => openSnooze(this, task),
+    onSkip: (task) => openSkip(this, task),
+  });
   _confirmDelete: { open: boolean; label: string; onConfirm: (() => void) | null } = {
     open: false,
     label: '',
@@ -432,6 +444,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     // the body-level confirm scrim and its document keydown listener (both live past
     // the element otherwise), plus any pending per-keystroke persist timers.
     teardownOverlay(this);
+    this._closeDeferMenu();
     // The sheet-threshold media query outlives the element, so its listener has to
     // come off too — it closes over `this` and would otherwise keep the whole
     // detached shadow tree reachable, and re-render it on every crossing.
@@ -985,6 +998,22 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     await this._refresh();
   }
 
+  /**
+   * Wire every split button under *root*, resolving each row's task from its id.
+   *
+   * The list renders one per row and the detail page exactly one, so both surfaces
+   * call this after their own markup lands. One controller holds the single open
+   * menu, so opening a second closes the first.
+   */
+  _wireDeferMenus(root: ParentNode): void {
+    this._deferMenus.wire(root);
+  }
+
+  /** Close whatever deferral menu is open — before replacing markup, or on unmount. */
+  private _closeDeferMenu(): void {
+    this._deferMenus.close();
+  }
+
   /** A completion-blocked task (e.g. a synced problem sensor) can't be marked done
    *  here — its owning integration clears it. Explain why instead of completing.
    *  A scan-locked task is blocked for a different reason, so it says so instead. */
@@ -1304,6 +1333,9 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     // the keyboard back on the same control in the rebuilt tree.
     const focused = this._focusKey();
     this._ensureMarkdown();
+    // The open deferral menu points at markup this render is about to replace, and
+    // holds document-level dismiss handlers, so it comes down before the rebuild.
+    this._closeDeferMenu();
     this._liveHassEls = [];
     // Everything below is rebuilt from scratch, so every preview on screen is about to
     // be detached — cancel its pending debounce rather than leaking a timer.
@@ -1664,6 +1696,8 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     const dialogHost = root.getElementById('hk-dialog-host');
     if (dialogHost && this._completion.open) renderCompletionDialog(this, dialogHost);
     if (dialogHost && this._moveCompletion.open) renderMoveCompletionDialog(this, dialogHost);
+    if (dialogHost && this._snooze.open) renderSnooze(this, dialogHost);
+    if (dialogHost && this._skip.open) renderSkip(this, dialogHost);
     if (dialogHost && this._declDialog.open) renderDeclarativeDialog(this, dialogHost);
     // renderConfirmDeleteDialog appends directly to document.body (not shadow root).
 

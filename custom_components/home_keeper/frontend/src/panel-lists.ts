@@ -30,6 +30,7 @@ import {
   renderGroups,
   scopeMatches,
 } from './panel-controls';
+import { deferMenu } from './panel-defer';
 import type { PanelHost } from './panel-host';
 import { TASK_CARD_INLINE_CHIPS } from './panel-styles';
 import { LS_TREE_COLLAPSED } from './panel-types';
@@ -282,7 +283,7 @@ function taskCard(p: PanelHost, task: Task): string {
           <span class="hk-row-spacer"></span>
           <div class="hk-status">${statusChip}</div>
           <div class="hk-card-actions">
-            ${doneAction}
+            ${deferMenu(p, task, doneAction, 'secondary')}
           </div>
         </div>
       </ha-card>`;
@@ -397,6 +398,8 @@ export function wireLists(p: PanelHost, root: ShadowRoot): void {
         if (task) void p._complete(task);
       }),
     );
+    // One caret per row, each resolving its own task.
+    p._wireDeferMenus(root);
     root.querySelectorAll<HTMLElement>('.hk-intro-dismiss').forEach((b) =>
       b.addEventListener('click', () => {
         p._introDismissed = true;

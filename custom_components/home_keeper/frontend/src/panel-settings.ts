@@ -36,6 +36,8 @@ import {
   profileSchema,
   profileSyncSchema,
   shoppingSchema,
+  skipSnoozeFlags,
+  skipSnoozeSchema,
   toProfileSync,
   type FormField,
 } from './forms';
@@ -120,6 +122,18 @@ export function settingsSectionList(p: PanelHost): {
       card: 'hk-settings',
       label: t('settings.heading'),
       mark: dot(opts?.sync_problem_sensors ? 'on' : 'off'),
+    },
+    {
+      key: 'skipsnooze',
+      card: 'hk-settings-skipsnooze',
+      // Both switches default on, so the dot is green unless one has been turned
+      // off — the state worth spotting from the rail is a *withdrawn* verb.
+      label: t('settings.skipsnooze_heading'),
+      mark: dot(
+        skipSnoozeFlags(opts ?? {}).allowSnooze && skipSnoozeFlags(opts ?? {}).allowSkip
+          ? 'on'
+          : 'off',
+      ),
     },
     {
       key: 'profiles',
@@ -257,6 +271,11 @@ function renderSettingsForm(p: PanelHost, host: HTMLElement): void {
     shopping_list_entity: '',
     profiles: [],
     notifications: [],
+    // Both verbs predate the switch, so "not configured" means on. This fallback is
+    // only reached before the first load answers; `skipSnoozeFlags` is what reads
+    // them once options are in hand.
+    allow_snooze: true,
+    allow_skip: true,
   };
   // General — settings independent of any single feature (e.g. one-off retention).
   host.appendChild(
@@ -303,6 +322,17 @@ function renderSettingsForm(p: PanelHost, host: HTMLElement): void {
         labelKey: 'settings.exclusions',
         noteKey: 'settings.exclusions_note',
       },
+    ),
+  );
+  // Skip & snooze — whether the two deferral verbs are offered at all.
+  host.appendChild(
+    settingsCard(
+      p,
+      'hk-settings-skipsnooze',
+      'settings.skipsnooze_heading',
+      'settings.skipsnooze_help',
+      skipSnoozeSchema(),
+      opts,
     ),
   );
 }
@@ -390,6 +420,13 @@ function settingsCard(
  * the controls below it. Returns '' where a card has nothing worth restating.
  */
 function settingsSummary(p: PanelHost, id: string, opts: HomeKeeperOptions): string {
+  if (id === 'hk-settings-skipsnooze') {
+    const { allowSnooze, allowSkip } = skipSnoozeFlags(opts);
+    if (allowSnooze && allowSkip) return t('settings.skipsnooze_both');
+    if (allowSnooze) return t('settings.skipsnooze_snooze_only');
+    if (allowSkip) return t('settings.skipsnooze_skip_only');
+    return t('settings.skipsnooze_neither');
+  }
   if (id === 'hk-settings-general') {
     const days = Number(opts.one_off_retention_days) || 0;
     return days > 0 ? tn('settings.retention_summary', days) : t('settings.retention_forever');

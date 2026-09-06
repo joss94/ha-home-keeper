@@ -105,10 +105,6 @@
           "name": "Требовать сканирование метки",
           "description": "Завершить эту задачу можно только связанной меткой. Любой другой способ отметить её выполненной отклоняется. Нужна метка."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
-        },
         "source": {
           "name": "Источник",
           "description": "Непрозрачные сведения о происхождении, принадлежащие интеграции, создавшей задачу. Home Keeper хранит и возвращает их без изменений и никогда не анализирует. См. docs/INTEGRATING.md."
@@ -120,6 +116,10 @@
         "completion_required_fields": {
           "name": "Обязательные поля выполнения",
           "description": "Какие поля метаданных выполнения панель делает обязательными, когда для деталей выполнения задано required — любые из note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
         }
       }
     },
@@ -195,10 +195,6 @@
           "name": "Требовать сканирование метки",
           "description": "Завершить эту задачу можно только связанной меткой. Нужна метка."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
-        },
         "source": {
           "name": "Источник",
           "description": "Непрозрачные сведения о происхождении, принадлежащие интеграции, создавшей задачу. См. docs/INTEGRATING.md."
@@ -210,6 +206,10 @@
         "completion_required_fields": {
           "name": "Обязательные поля выполнения",
           "description": "Какие поля метаданных выполнения панель делает обязательными, когда для деталей выполнения задано required — любые из note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
         }
       }
     },
@@ -333,7 +333,11 @@
         },
         "hours": {
           "name": "Часы",
-          "description": "На сколько часов отложить задачу (по умолчанию 24)."
+          "description": "На сколько часов отложить задачу (по умолчанию 24). Игнорируется, если задано «До»."
+        },
+        "until": {
+          "name": "До",
+          "description": "Откладывает задачу точно на эту дату и время вместо количества часов. Если задать это поле, «Часы» не используются."
         },
         "origin": {
           "name": "Инициатор",
@@ -343,11 +347,23 @@
     },
     "skip_task": {
       "name": "Пропустить задачу",
-      "description": "Перевести задачу к следующему повторению без записи выполнения.",
+      "description": "Переводит задачу к следующему повторению без записи о выполнении. Пропуск фиксируется отдельно, поэтому никогда не считается выполнением.",
       "fields": {
         "task_id": {
           "name": "Название или ID задачи",
           "description": "Идентификатор пропускаемой задачи. Название тоже подходит. Панель показывает id."
+        },
+        "note": {
+          "name": "Заметка",
+          "description": "Почему это повторение было пропущено."
+        },
+        "who": {
+          "name": "Кто",
+          "description": "Кто решил пропустить."
+        },
+        "reading": {
+          "name": "Показание счётчика",
+          "description": "Значение связанного датчика в момент пропуска, для задачи по наработке."
         },
         "origin": {
           "name": "Инициатор",
@@ -808,6 +824,64 @@
         }
       }
     },
+    "update_skip": {
+      "name": "Обновить пропуск",
+      "description": "Изменяет детали записанного пропуска, определяемого меткой времени. Пропуск сохраняет свою дату, расписание не меняется.",
+      "fields": {
+        "task_id": {
+          "name": "Название или ID задачи",
+          "description": "Идентификатор задачи, пропуск которой вы редактируете. Название тоже подходит. Панель показывает id."
+        },
+        "ts": {
+          "name": "Метка времени пропуска",
+          "description": "Метка времени ISO (ts) редактируемой записи о пропуске."
+        },
+        "note": {
+          "name": "Заметка",
+          "description": "Почему это повторение было пропущено. Пустое значение очищает её."
+        },
+        "who": {
+          "name": "Кто",
+          "description": "Кто решил пропустить. Пустое значение очищает поле."
+        },
+        "reading": {
+          "name": "Показание счётчика",
+          "description": "Значение связанного датчика в момент пропуска, для задачи по наработке."
+        }
+      }
+    },
+    "delete_skip": {
+      "name": "Удалить пропуск",
+      "description": "Удаляет записанный пропуск, определяемый меткой времени. Отмена пропуска, который последним сбросил счётчик наработки, восстанавливает этот счётчик.",
+      "fields": {
+        "task_id": {
+          "name": "Название или ID задачи",
+          "description": "Идентификатор задачи, пропуск которой вы удаляете. Название тоже подходит. Панель показывает id."
+        },
+        "ts": {
+          "name": "Метка времени пропуска",
+          "description": "Метка времени ISO (ts) удаляемой записи о пропуске."
+        }
+      }
+    },
+    "move_skip": {
+      "name": "Перенести пропуск",
+      "description": "Меняет дату записанного пропуска, определяемого текущей меткой времени. Расписание задачи не меняется.",
+      "fields": {
+        "task_id": {
+          "name": "Название или ID задачи",
+          "description": "Идентификатор задачи, пропуск которой вы переносите. Название тоже подходит. Панель показывает id."
+        },
+        "old_ts": {
+          "name": "Текущая метка времени пропуска",
+          "description": "Метка времени ISO (ts) переносимой записи о пропуске."
+        },
+        "new_ts": {
+          "name": "Новая дата",
+          "description": "Новые дата и время, на которые записывается пропуск."
+        }
+      }
+    },
     "add_declarative_companion": {
       "name": "Добавить декларативный компаньон",
       "description": "Регистрирует декларативный компаньон — рецепт, который создаёт одну управляемую задачу датчика на каждый объект, соответствующий фильтрам (целевая интеграция + фильтры объектов), с именем задачи и заметками через Jinja-шаблоны. Только для администраторов."
@@ -943,12 +1017,6 @@
     "failed_to_store_file": {
       "message": "Не удалось сохранить файл."
     },
-    "invalid_declarative_companion": {
-      "message": "{error}"
-    },
-    "declarative_companion_not_found": {
-      "message": "Декларативный компаньон не найден: {spec_id}"
-    },
     "asset_ambiguous": {
       "message": "Several appliances are named {name}. Use an id instead: {ids}"
     },
@@ -960,6 +1028,12 @@
     },
     "task_ambiguous": {
       "message": "Several tasks are named {name}. Use an id instead: {ids}"
+    },
+    "invalid_declarative_companion": {
+      "message": "{error}"
+    },
+    "declarative_companion_not_found": {
+      "message": "Декларативный компаньон не найден: {spec_id}"
     }
   }
 }

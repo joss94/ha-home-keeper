@@ -6,6 +6,45 @@ All notable changes to Home Keeper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic
 versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
 
+## [0.21.0b4]
+
+### Added
+
+- **The panel now supports snooze and skip on a task.** The task page and each row
+  of the task list show Snooze and Skip next to Done. Each option shows how it
+  changes the due date. (Fixes #268)
+
+- **A dashboard card offers snooze and skip on each row.** Both open the same
+  dialogs as the panel. Home Keeper omits an option that does not apply to the
+  task, such as skip on a blocked task.
+
+- **Home Keeper records a skip in the task history.** Each entry stores a note and
+  a person, and a user can edit or undo it like a completion. A skip is never
+  counted as a completion, so the completion tally and the average interval do not
+  include it.
+
+- **A snooze now offers a choice of duration.** Select 1 of 4 durations, or set a
+  date and time. The dialog shows the new due date first.
+
+- **Settings now has a Skip & snooze section that turns off either one.** Both
+  start on. Home Keeper removes the one that is off from the panel, from the card,
+  and from the notification buttons.
+
+- **3 services now edit the recorded skips.** `update_skip` changes an entry,
+  `delete_skip` removes one, and `move_skip` changes its date. `skip_task` accepts
+  a note and a person, and `snooze_task` accepts `until` for an exact date and
+  time.
+
+### Fixed
+
+- **A skip now defers a task that is measured by a meter.** Such a task cleared its
+  due date and then became due again at the next reading from the sensor. A skip
+  now advances the meter, so the next due date is a full interval later.
+
+- **The skip and snooze events now include `origin`.** The service descriptions
+  stated that these events return `origin` to the caller, which prevents a loop.
+  Home Keeper did not add it before this release.
+
 ## [0.21.0b3]
 
 ### Added
@@ -243,7 +282,6 @@ versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
 - **Deleting an appliance over the websocket now runs the same cleanup as the
   service.** The websocket handler carried its own copy of the cleanup code and
   could drift from the service's.
-
 ## [0.19.0b6]
 
 ### Changed

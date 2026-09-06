@@ -758,6 +758,16 @@ export const STYLES = `
      the list still has the width to carry a chip, and hiding them changed the list
      into a different list at the moment it was meant to hold still. */
   .hk-chips.hk-chips-inline ha-assist-chip { --ha-assist-chip-container-height: 26px; }
+  /* A chip narrower than its label used to wrap that label onto two or three lines,
+     which spilled it straight out of the pill's outline — "Managed by Battery Notes"
+     on a phone did exactly that. The container height is fixed, so the extra lines
+     had nowhere to go and simply drew over the row.
+
+     white-space is inherited, and ha-assist-chip leaves its label span unstyled and
+     un-parted, so setting it on the host is what reaches the text. One line then gets
+     clipped by the row's own overflow, at the card's edge, instead of escaping it. A
+     truncated chip loses nothing: the detail page lists every chip in full. */
+  .hk-chips.hk-chips-inline ha-assist-chip { white-space: nowrap; }
   /* Everything past the second chip is folded behind the "+n" beside it. The chips
      stay in the DOM: this is a density decision about one row, not a decision to
      withhold what the task is tagged with — the detail page still lists them all. */
@@ -1037,6 +1047,76 @@ export const STYLES = `
   }
   .hk-detail-card .hk-chips { margin-top: 10px; }
   .hk-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  /* The Done split button — one pill carrying two hit targets. The caret sits inside
+     Done's own outline rather than beside it, so the pair reads as a single control
+     that opens rather than as a second button someone parked next to Done. Done still
+     never changes meaning or costs an extra tap.
+
+     The caret is an ha-button carrying Done's own weight, so Home Assistant paints
+     both halves from the same rule. Naming a colour here was the earlier mistake: the
+     task page's Done is solid accent while a list row's is a pale tonal, so a wrapper
+     painted with the primary colour matched the first and clashed badly on the second,
+     and would clash again under anyone else's theme.
+
+     Both halves square off and the pill wrapper rounds the pair by clipping, because
+     ha-button takes a single-value radius override and rejects a four-value one. The
+     menu is a sibling of that clip rather than a child: it hangs below the button, and
+     the overflow that rounds the corners would cut it off.
+
+     The seam is drawn from currentColor, which inside a filled button is its label
+     colour — legible against the fill whichever weight the surface uses. */
+  .hk-split { position: relative; display: inline-flex; }
+  .hk-split-pill {
+    display: inline-flex; align-items: stretch;
+    border-radius: var(--hk-r-pill); overflow: hidden;
+  }
+  .hk-split-pill > ha-button { --ha-button-border-radius: 0; }
+  .hk-split-pill > ha-button::part(base) { box-shadow: none; }
+  ha-button.hk-split-caret { --mdc-icon-size: 20px; }
+  ha-button.hk-split-caret::part(base) {
+    min-width: 0; padding-left: 7px; padding-right: 7px;
+    border-left: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  }
+  /* The display below beats the user-agent rule for the hidden attribute, which is
+     a plain type-less one — so without this override the menu is laid out even while
+     hidden, floating over the row beneath it and swallowing its clicks. */
+  .hk-defer-menu[hidden] { display: none; }
+  /* The menu is anchored to whichever edge of the split is *inside* the layout, not
+     always the left one. A list row puts its actions hard against the right margin,
+     so a left-anchored menu starts at the row's right edge and runs 220px past the
+     viewport — on a phone that is a horizontally scrolling page and half a menu. The
+     detail page's actions sit at the left, where left-anchoring is the correct one.
+     The max-width is the backstop for a viewport narrower than the menu itself. */
+  .hk-defer-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 9;
+    min-width: 220px; max-width: calc(100vw - 24px); padding: 6px;
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--card-background-color);
+    border: 1px solid var(--divider-color); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  }
+  .hk-card-actions .hk-defer-menu { left: auto; right: 0; }
+  .hk-defer-menu button {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%;
+    padding: 9px 10px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--primary-text-color);
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .hk-defer-menu button:hover { background: var(--secondary-background-color); }
+  .hk-defer-menu button:focus-visible {
+    outline: 2px solid var(--primary-color); outline-offset: -2px;
+  }
+  .hk-defer-menu ha-icon { flex: none; color: var(--secondary-text-color); }
+  .hk-defer-text { display: flex; flex-direction: column; min-width: 0; }
+  /* The verbs are not self-explanatory — which is what #268 was about — so each
+     carries one line saying what it does to the schedule. */
+  .hk-defer-sub { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
+  /* The resolved date under the snooze picker: the user reads the answer rather than
+     doing the arithmetic. */
+  .hk-snooze-hint {
+    font-size: 13px; color: var(--secondary-text-color);
+    padding: 4px 2px 0; line-height: 1.4;
+  }
   .hk-detail-row {
     display: flex; gap: 12px; padding: 6px 0; align-items: baseline;
     border-bottom: 1px solid var(--divider-color);
@@ -1176,13 +1256,25 @@ export const STYLES = `
   ul.hk-hist-list .date { flex: 1; min-width: 0; }
   ul.hk-hist-list .when { color: var(--secondary-text-color); font-size: 0.85rem; white-space: nowrap; }
   .hk-hist-actions { display: flex; align-items: center; }
-  ha-icon-button.hk-hist-del, ha-icon-button.hk-hist-edit, ha-icon-button.hk-hist-move {
+  ha-icon-button.hk-hist-del, ha-icon-button.hk-hist-edit, ha-icon-button.hk-hist-move,
+  ha-icon-button.hk-hist-skip-del, ha-icon-button.hk-hist-skip-edit,
+  ha-icon-button.hk-hist-skip-move {
     --mdc-icon-button-size: 36px; color: var(--secondary-text-color);
+  }
+  /* A skipped occurrence is a record of *not* doing the thing, so its row sits back
+     from the completions around it: the date is muted and the chip names what it is.
+     Without the chip the two kinds of row look identical, which misreads the list. */
+  .hk-hist-is-skip .date { color: var(--secondary-text-color); }
+  .hk-hist-skip-chip {
+    font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap;
+    padding: 3px 8px; border-radius: 10px;
+    background: var(--secondary-background-color); color: var(--secondary-text-color);
   }
   /* The destructive one of the three reads as destructive on approach rather than at
      rest: three red trashcans down a history list is an alarm, and the row is a
      record, not a control panel. */
-  ha-icon-button.hk-hist-del:hover, ha-icon-button.hk-hist-del:focus-visible {
+  ha-icon-button.hk-hist-del:hover, ha-icon-button.hk-hist-del:focus-visible,
+  ha-icon-button.hk-hist-skip-del:hover, ha-icon-button.hk-hist-skip-del:focus-visible {
     color: var(--hk-danger-ink);
   }
   .hk-hist-meta {

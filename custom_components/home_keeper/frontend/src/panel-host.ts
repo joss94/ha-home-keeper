@@ -22,6 +22,7 @@
  *   commit at a time, alongside the region that needs it.
  */
 
+import type { SkipState, SnoozeState } from './defer';
 import type { SignedUrlCache } from './documents';
 import type { FormField, HaFormElement } from './forms';
 import type { MarkdownPreview } from './markdown';
@@ -176,7 +177,8 @@ export interface PanelHost extends HTMLElement {
     editable: boolean,
     placeholder?: string,
   ): string;
-  /** The "move completion date" dialog's state. */
+  /** The "move completion date" dialog's state. Its `kind` says whether the entry
+   *  being re-dated is a completion or a skip — the interaction is the same. */
   _moveCompletion: MoveCompletionDialogState;
   /** Toast why *task*'s Done action is unavailable. */
   _notifyBlocked(task: Task): void;
@@ -226,6 +228,13 @@ export interface PanelHost extends HTMLElement {
   _settingsSection: SettingsSection | null;
   /** Settings sections (and profile sync groups) the user has collapsed this session. */
   _settingsSectionCollapsed: Set<string>;
+  /** Wire every deferral split button under *root*, resolving each row's task from
+   *  its id. One controller holds the single open menu for the whole panel. */
+  _wireDeferMenus(root: ParentNode): void;
+  /** The skip dialog's state, for a new skip or an amendment to a logged one. */
+  _skip: SkipState;
+  /** The snooze dialog's state. */
+  _snooze: SnoozeState;
   /** Save the open appliance drawer (validates, then creates or updates). */
   _submitAssetForm(): Promise<void>;
   /** Save the open task drawer (validates, then creates or updates). */

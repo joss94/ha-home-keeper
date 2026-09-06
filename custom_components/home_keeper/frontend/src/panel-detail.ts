@@ -30,6 +30,7 @@ import {
 } from './panel-chips';
 import { openConfirmDialog } from './panel-dialogs';
 import { completionGroupsFor, historyBody, wireHistory } from './panel-history';
+import { deferMenu, wireSkipHistoryRows } from './panel-defer';
 import type { PanelHost } from './panel-host';
 import { MDI_CONSUMABLE, MDI_OPEN_IN_NEW_ICON, MDI_WEAR } from './panel-icons';
 import { assetAncestry } from './panel-lists';
@@ -322,6 +323,11 @@ function taskDetail(p: PanelHost, task: Task): string {
     : mb?.completion_blocked || scanRequired(task)
       ? p._blockedDone('d-done-blocked-wrap', task, 'primary')
       : `<ha-button ${btnAttrs('primary')} class="d-done">${escapeHTML(t('btn.done'))}</ha-button>`;
+  // Snooze and Skip hang off a caret beside Done rather than sitting as buttons of
+  // their own: they are the exceptions to the one action a task page is really for,
+  // and three peers would read as three equal choices. Done keeps its own hit
+  // target, so it never costs an extra tap or changes meaning.
+  const doneSplit = deferMenu(p, task, doneBtn);
   // Notes get an inline editor right on the detail page: they're long-form prose
   // that renders as Markdown, so authoring deserves a full-width box with a live
   // preview rather than one cramped row among the schedule fields. (For a
@@ -341,7 +347,7 @@ function taskDetail(p: PanelHost, task: Task): string {
         <div class="hk-detail-title">${escapeHTML(task.name)}</div>
         <div class="hk-chips">${statusChip}${dev}${area}${tag}${taskChips}${managed}</div>
         <div class="hk-detail-actions">
-          ${doneBtn}
+          ${doneSplit}
           ${manage}
         </div>
         ${completionHint}
@@ -765,6 +771,8 @@ function wireDetailActions(p: PanelHost, root: ShadowRoot): void {
     root
       .querySelector('.d-done-blocked-wrap')
       ?.addEventListener('click', () => p._notifyBlocked(task));
+    p._wireDeferMenus(root);
+    wireSkipHistoryRows(p, root);
     root.querySelector('.d-edit')?.addEventListener('click', () => p._openEdit(task));
     root.querySelector('.d-dup')?.addEventListener('click', () => p._openDuplicate(task));
     // A greyed Duplicate is a span carrying the tap (a disabled button swallows

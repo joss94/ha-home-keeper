@@ -105,10 +105,6 @@
           "name": "Exiger le scan de l'étiquette",
           "description": "Seule l'étiquette liée peut terminer cette tâche. Toute autre façon de la marquer comme faite est refusée. Nécessite une étiquette."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
-        },
         "source": {
           "name": "Source",
           "description": "Provenance opaque appartenant à l'intégration qui a créé la tâche. Home Keeper la stocke et la renvoie telle quelle et ne l'inspecte jamais. Voir docs/INTEGRATING.md."
@@ -120,6 +116,10 @@
         "completion_required_fields": {
           "name": "Champs d'achèvement obligatoires",
           "description": "Quels champs de métadonnées d'achèvement le panneau rend obligatoires lorsque le niveau de détail est required — au choix note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Outside the active windows the next due date moves to the nearest upcoming window start. Each object has start and end as MM-DD strings; pass a list or a single object. Wrapping seasons (Nov through Mar) are supported. Null clears the season."
         }
       }
     },
@@ -195,10 +195,6 @@
           "name": "Exiger le scan de l'étiquette",
           "description": "Seule l'étiquette liée peut terminer cette tâche. Nécessite une étiquette."
         },
-        "active_season": {
-          "name": "Active season",
-          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
-        },
         "source": {
           "name": "Source",
           "description": "Provenance opaque appartenant à l'intégration qui a créé la tâche. Voir docs/INTEGRATING.md."
@@ -210,6 +206,10 @@
         "completion_required_fields": {
           "name": "Champs d'achèvement obligatoires",
           "description": "Quels champs de métadonnées d'achèvement le panneau rend obligatoires lorsque le niveau de détail est required — au choix note, cost, photo, who."
+        },
+        "active_season": {
+          "name": "Active season",
+          "description": "Restrict this task to one or more date ranges each year. Each object has start and end as MM-DD strings; pass a list, a single object, or null to clear."
         }
       }
     },
@@ -333,7 +333,11 @@
         },
         "hours": {
           "name": "Heures",
-          "description": "De combien d'heures reporter la tâche (24 par défaut)."
+          "description": "De combien d'heures reporter la tâche (24 par défaut). Ignoré si Jusqu'à est renseigné."
+        },
+        "until": {
+          "name": "Jusqu'à",
+          "description": "Reporte la tâche à cette date et heure précises plutôt que d'un nombre d'heures. Si vous le renseignez, le champ Heures n'est pas utilisé."
         },
         "origin": {
           "name": "Origine",
@@ -343,11 +347,23 @@
     },
     "skip_task": {
       "name": "Ignorer la tâche",
-      "description": "Avancer une tâche à sa prochaine occurrence sans enregistrer d'achèvement.",
+      "description": "Fait passer une tâche à son occurrence suivante sans enregistrer d'achèvement. L'omission est consignée à part et ne compte donc jamais comme un achèvement.",
       "fields": {
         "task_id": {
           "name": "Nom ou ID de la tâche",
           "description": "L'identifiant de la tâche à ignorer. Son nom fonctionne aussi. Le panneau affiche l'id."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Pourquoi cette occurrence a été laissée passer."
+        },
+        "who": {
+          "name": "Qui",
+          "description": "Qui a décidé de l'ignorer."
+        },
+        "reading": {
+          "name": "Relevé du compteur",
+          "description": "La valeur du capteur lié au moment de l'omission, pour une tâche à l'usage."
         },
         "origin": {
           "name": "Origine",
@@ -808,6 +824,64 @@
         }
       }
     },
+    "update_skip": {
+      "name": "Mettre à jour l'omission",
+      "description": "Modifie le détail d'une omission consignée, identifiée par son horodatage. L'omission garde sa date et la planification n'est pas touchée.",
+      "fields": {
+        "task_id": {
+          "name": "Nom ou ID de la tâche",
+          "description": "L'identifiant de la tâche dont vous modifiez l'omission. Son nom fonctionne aussi. Le panneau affiche l'id."
+        },
+        "ts": {
+          "name": "Horodatage de l'omission",
+          "description": "L'horodatage ISO (ts) de l'entrée d'omission à modifier."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Pourquoi cette occurrence a été laissée passer. Une valeur vide l'efface."
+        },
+        "who": {
+          "name": "Qui",
+          "description": "Qui a décidé de l'ignorer. Une valeur vide l'efface."
+        },
+        "reading": {
+          "name": "Relevé du compteur",
+          "description": "La valeur du capteur lié au moment de l'omission, pour une tâche à l'usage."
+        }
+      }
+    },
+    "delete_skip": {
+      "name": "Supprimer l'omission",
+      "description": "Retire une omission consignée, identifiée par son horodatage. Annuler l'omission qui a réinitialisé en dernier un compteur d'usage restaure ce compteur.",
+      "fields": {
+        "task_id": {
+          "name": "Nom ou ID de la tâche",
+          "description": "L'identifiant de la tâche dont vous retirez l'omission. Son nom fonctionne aussi. Le panneau affiche l'id."
+        },
+        "ts": {
+          "name": "Horodatage de l'omission",
+          "description": "L'horodatage ISO (ts) de l'entrée d'omission à retirer."
+        }
+      }
+    },
+    "move_skip": {
+      "name": "Déplacer l'omission",
+      "description": "Redate une omission consignée, identifiée par son horodatage actuel. La planification de la tâche n'est pas touchée.",
+      "fields": {
+        "task_id": {
+          "name": "Nom ou ID de la tâche",
+          "description": "L'identifiant de la tâche dont vous déplacez l'omission. Son nom fonctionne aussi. Le panneau affiche l'id."
+        },
+        "old_ts": {
+          "name": "Horodatage actuel de l'omission",
+          "description": "L'horodatage ISO (ts) de l'entrée d'omission à déplacer."
+        },
+        "new_ts": {
+          "name": "Nouvelle date",
+          "description": "La nouvelle date et heure auxquelles consigner l'omission."
+        }
+      }
+    },
     "add_declarative_companion": {
       "name": "Ajouter un companion déclaratif",
       "description": "Enregistre un companion déclaratif — une recette qui matérialise une tâche de capteur gérée par entité correspondant aux filtres (intégration cible + filtres d'entité), avec un nom de tâche et des notes utilisant des modèles Jinja. Réservé aux administrateurs."
@@ -943,12 +1017,6 @@
     "failed_to_store_file": {
       "message": "Impossible d'enregistrer le fichier."
     },
-    "invalid_declarative_companion": {
-      "message": "{error}"
-    },
-    "declarative_companion_not_found": {
-      "message": "Companion déclaratif introuvable : {spec_id}"
-    },
     "asset_ambiguous": {
       "message": "Several appliances are named {name}. Use an id instead: {ids}"
     },
@@ -960,6 +1028,12 @@
     },
     "task_ambiguous": {
       "message": "Several tasks are named {name}. Use an id instead: {ids}"
+    },
+    "invalid_declarative_companion": {
+      "message": "{error}"
+    },
+    "declarative_companion_not_found": {
+      "message": "Companion déclaratif introuvable : {spec_id}"
     }
   }
 }

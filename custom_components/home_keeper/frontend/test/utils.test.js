@@ -1,46 +1,49 @@
 import { readFileSync } from 'fs';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
-  escapeHTML,
-  formatQuantity,
-  isHttpUrl,
-  isSafeImageUrl,
-  safeFileHref,
-  safeHref,
-  randomId,
-  recurrenceSummary,
-  isArmedTriggered,
-  isOverdue,
-  dueLabel,
-  meterRemaining,
-  taskRecordsReading,
-  readingUnit,
-  btnAttrs,
-  deviceName,
-  formatDate,
-  formatDateTime,
-  setBtnWeight,
-  deviceDomain,
-  brandLogoUrl,
-  areaName,
-  assetSummary,
-  sortedCompletions,
-  completionStats,
-  taskRelatesToAsset,
-  tasksForAsset,
-  parseRoute,
-  buildPath,
-  formatCost,
-  navigateTo,
-  personName,
-  relativeDay,
-  toast,
-  buildAssetTree,
   ASSET_TABS,
   DEFAULT_ASSET_TAB,
+  DEFAULT_SNOOZE_PRESET,
   SETTINGS_SECTIONS,
+  SNOOZE_PRESETS,
+  areaName,
+  assetSummary,
+  brandLogoUrl,
+  btnAttrs,
+  buildAssetTree,
+  buildPath,
+  completionStats,
+  deviceDomain,
+  deviceName,
+  dueLabel,
+  escapeHTML,
+  formatCost,
+  formatDate,
+  formatDateTime,
+  formatQuantity,
+  isArmedTriggered,
   isBuyTask,
+  isHttpUrl,
+  isOverdue,
+  isSafeImageUrl,
+  meterRemaining,
+  navigateTo,
+  parseRoute,
+  personName,
+  randomId,
+  readingUnit,
+  recurrenceSummary,
+  relativeDay,
+  resolveSnoozePreset,
+  safeFileHref,
+  safeHref,
+  setBtnWeight,
+  sortedCompletions,
   statusChipHtml,
+  taskRecordsReading,
+  taskRelatesToAsset,
+  tasksForAsset,
+  toast,
 } from '../src/utils.ts';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -1385,5 +1388,53 @@ describe('personName', () => {
     expect(personName(hass, 'person.gone')).toBe('person.gone');
     expect(personName({}, 'person.sam')).toBe('person.sam');
     expect(personName(undefined, 'person.sam')).toBe('person.sam');
+  });
+});
+
+describe('snooze presets', () => {
+  const from = new Date(2026, 7, 30, 9, 0); // Sun 30 Aug 2026, 09:00 local
+
+  it('resolves each offset from the given instant', () => {
+    expect(resolveSnoozePreset('1h', from)).toEqual(new Date(2026, 7, 30, 10, 0));
+    expect(resolveSnoozePreset('1d', from)).toEqual(new Date(2026, 7, 31, 9, 0));
+    expect(resolveSnoozePreset('1w', from)).toEqual(new Date(2026, 8, 6, 9, 0));
+    expect(resolveSnoozePreset('1mo', from)).toEqual(new Date(2026, 8, 30, 9, 0));
+  });
+
+  it('clamps a month onto a shorter one instead of rolling past it', () => {
+    // Jan 31 + 1 month is Feb 28, matching the backend's `recurrence.add_months`.
+    // A bare `setMonth` would roll *forward* to Mar 3, so the date the dialog
+    // previews would not be the date the task ends up with.
+    expect(resolveSnoozePreset('1mo', new Date(2026, 0, 31, 9, 0))).toEqual(
+      new Date(2026, 1, 28, 9, 0),
+    );
+  });
+
+  it('clamps onto a leap February', () => {
+    expect(resolveSnoozePreset('1mo', new Date(2028, 0, 31, 9, 0))).toEqual(
+      new Date(2028, 1, 29, 9, 0),
+    );
+  });
+
+  it('carries an hour offset across a day boundary', () => {
+    expect(resolveSnoozePreset('1h', new Date(2026, 7, 30, 23, 30))).toEqual(
+      new Date(2026, 7, 31, 0, 30),
+    );
+  });
+
+  it('has no offset for custom — the dialog reveals a date field instead', () => {
+    expect(resolveSnoozePreset('custom', from)).toBeNull();
+  });
+
+  it('returns null for an id that is not a preset', () => {
+    expect(resolveSnoozePreset('1y', from)).toBeNull();
+  });
+
+  it('opens on a preset that is actually in the list', () => {
+    expect(SNOOZE_PRESETS.map((p) => p.id)).toContain(DEFAULT_SNOOZE_PRESET);
+  });
+
+  it('ends with custom, so the escape hatch sits last in the dropdown', () => {
+    expect(SNOOZE_PRESETS[SNOOZE_PRESETS.length - 1].id).toBe('custom');
   });
 });

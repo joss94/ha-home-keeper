@@ -7,6 +7,9 @@ import {
   buildTaskPayload,
   duplicateTaskSeed,
   formRecurrenceSummary,
+  mergePartForm,
+  metadataBaseSchema,
+  metadataDependentSchema,
   metadataSchema,
   notifyFormData,
   notifyFormToNotification,
@@ -14,7 +17,12 @@ import {
   pickFormData,
   problemSyncExclusionsSchema,
   problemSyncSchema,
+  partBaseSchema,
+  partDependentKey,
+  partDependentSchema,
+  partFormData,
   partSchema,
+  partSummaryLine,
   problemSyncToggleSchema,
   profileSyncSchema,
   schemaFieldNames,
@@ -1720,5 +1728,345 @@ describe('profileSchema companions fields', () => {
       expect(field.selector.select.multiple).toBe(true);
       expect(field.selector.select.options).toEqual(options);
     }
+  });
+});
+
+// ── the part editor's two forms (issue #296) ─────────────────────────────────
+// Typing into Stock used to rebuild the whole drawer the moment the part started
+// tracking stock. The editor is now a fixed form plus a dependent one, so these pin
+// what each holds, what decides the dependent one's shape, and how their events
+// fold back into one part.
+
+describe('partBaseSchema / partDependentSchema', () => {
+  const consumable = { name: 'Anode rod', type: 'consumable' };
+
+  it('keeps every gate — type, stock, reorder — in the base form, which never changes shape', () => {
+    expect(names(partBaseSchema())).toEqual([
+      'part_name',
+      'part_number',
+      'type',
+      'vendor',
+      'cost',
+      'part_url',
+      'notes',
+      'stock',
+      'reorder_at',
+      'stock_unit',
+    ]);
+    // Whatever the part, the base form is the same list.
+    expect(partBaseSchema()).toEqual(partBaseSchema());
+  });
+
+  it('puts only the revealed fields in the dependent form', () => {
+    expect(names(partDependentSchema(consumable))).toEqual([]);
+    expect(names(partDependentSchema({ ...consumable, stock: 2 }))).toEqual(['consume_quantity']);
+    expect(names(partDependentSchema({ ...consumable, reorder_at: 1 }))).toEqual(['create_buy_task']);
+    expect(names(partDependentSchema({ ...consumable, reorder_at: 1, create_buy_task: true }))).toEqual([
+      'create_buy_task',
+      'restock_quantity',
+    ]);
+    expect(names(partDependentSchema({ ...consumable, type: 'wear' }))).toEqual([
+      'replace_interval',
+      'replace_unit',
+      'last_replaced',
+    ]);
+  });
+
+  it('is what partSchema is the concatenation of', () => {
+    const part = { ...consumable, type: 'wear', stock: 2, reorder_at: 1, create_buy_task: true };
+    expect(partSchema(part)).toEqual([...partBaseSchema(), ...partDependentSchema(part)]);
+  });
+});
+
+describe('partDependentKey', () => {
+  const part = { name: 'Anode rod', type: 'consumable' };
+  it('changes only when the dependent form would', () => {
+    const key = partDependentKey(part);
+    // Another digit in a tracked stock is not a change of shape.
+    expect(partDependentKey({ ...part, stock: 2 })).toBe(partDependentKey({ ...part, stock: 25 }));
+    expect(partDependentKey({ ...part, stock: 0 })).not.toBe(key);
+    expect(partDependentKey({ ...part, reorder_at: 0 })).not.toBe(key);
+    expect(partDependentKey({ ...part, type: 'wear' })).not.toBe(key);
+    expect(partDependentKey({ ...part, reorder_at: 1, create_buy_task: true })).not.toBe(
+      partDependentKey({ ...part, reorder_at: 1, create_buy_task: false }),
+    );
+    // Fields the dependent form does not gate on leave the key alone.
+    expect(partDependentKey({ ...part, name: 'Other', vendor: 'x', notes: 'y' })).toBe(key);
+  });
+});
+
+describe('partFormData', () => {
+  it('seeds every field, defaulting the unit and the buy toggle', () => {
+    expect(partFormData({ name: 'Anode rod', type: 'wear', stock: 2 })).toEqual({
+      part_name: 'Anode rod',
+      part_number: '',
+      type: 'wear',
+      vendor: '',
+      cost: undefined,
+      part_url: '',
+      notes: '',
+      stock: 2,
+      reorder_at: undefined,
+      stock_unit: '',
+      consume_quantity: undefined,
+      create_buy_task: false,
+      restock_quantity: undefined,
+      replace_interval: undefined,
+      replace_unit: 'months',
+      last_replaced: undefined,
+    });
+  });
+});
+
+describe('mergePartForm', () => {
+  const prev = {
+    id: 'p1',
+    name: 'Descaler',
+    type: 'consumable',
+    stock: 750,
+    reorder_at: 500,
+    stock_unit: 'ml',
+    consume_quantity: 250,
+    file_name: 'receipt.pdf',
+    file_content_type: 'application/pdf',
+    file_size: 591,
+  };
+
+  it('only touches the fields the event carries', () => {
+    // The base form's event says nothing about the dependent form's fields.
+    const next = mergePartForm(prev, { part_name: 'Descaling solution', stock: 750, reorder_at: 500, stock_unit: 'ml' });
+    expect(next.name).toBe('Descaling solution');
+    expect(next.consume_quantity).toBe(250);
+    expect(next.file_name).toBe('receipt.pdf');
+    expect(next.id).toBe('p1');
+  });
+
+  it('reads an emptied box as unset', () => {
+    const next = mergePartForm(prev, { stock: '' });
+    expect(next.stock).toBeNull();
+    // ...and drops what depended on it.
+    expect(next.consume_quantity).toBeNull();
+  });
+
+  it('drops a value whose gate has closed', () => {
+    const buying = { ...prev, create_buy_task: true, restock_quantity: 4 };
+    expect(mergePartForm(buying, { reorder_at: '' })).toMatchObject({
+      reorder_at: null,
+      create_buy_task: false,
+      restock_quantity: null,
+    });
+    expect(mergePartForm(buying, { create_buy_task: false })).toMatchObject({
+      create_buy_task: false,
+      restock_quantity: null,
+    });
+  });
+
+  it('keeps the replacement schedule only on a wear item, and only with an interval', () => {
+    const wear = { name: 'Anode', type: 'wear', replace_interval: 12, replace_unit: 'months', last_replaced: '2025-05-01' };
+    expect(mergePartForm(wear, { type: 'consumable' })).toMatchObject({
+      replace_interval: null,
+      replace_unit: null,
+      // A consumable keeps the date: the field is hidden, so nothing changed it.
+      last_replaced: '2025-05-01',
+    });
+    expect(mergePartForm(wear, { replace_interval: '', replace_unit: 'months' })).toMatchObject({
+      replace_interval: null,
+      replace_unit: null,
+    });
+    expect(mergePartForm(wear, { last_replaced: '' }).last_replaced).toBeNull();
+  });
+
+  it('coerces the numbers and trims the text the old one-form handler did', () => {
+    const next = mergePartForm(prev, {
+      cost: '12.5',
+      part_url: ' https://x.example ',
+      stock_unit: ' ml ',
+      restock_quantity: '3',
+    });
+    expect(next.cost).toBe(12.5);
+    expect(next.url).toBe('https://x.example');
+    expect(next.stock_unit).toBe('ml');
+    // Not auto-buying, so the restock quantity has nothing to attach to.
+    expect(next.restock_quantity).toBeNull();
+  });
+});
+
+describe('partSummaryLine', () => {
+  it('says the stock with its unit, flags it when low, and names the reorder point', () => {
+    expect(partSummaryLine({ name: 'Descaler', type: 'consumable', stock: 750, reorder_at: 500, stock_unit: 'ml' })).toBe(
+      'In stock: 750 ml · Reorder at 500 ml',
+    );
+    expect(partSummaryLine({ name: 'Anode', type: 'wear', stock: 2, reorder_at: 2 })).toBe(
+      'Low stock: 2 · Reorder at 2',
+    );
+  });
+  it('adds a wear item\'s interval, and says nothing for a part that tracks nothing', () => {
+    expect(
+      partSummaryLine({ name: 'Anode', type: 'wear', stock: 2, replace_interval: 12, replace_unit: 'months' }),
+    ).toBe('In stock: 2 · Every 12 months');
+    expect(partSummaryLine({ name: 'Valve', type: 'wear', replace_interval: 36, replace_unit: 'months' })).toBe(
+      'Every 36 months',
+    );
+    expect(partSummaryLine({ name: 'Valve', type: 'consumable' })).toBe('');
+    // An interval without a unit is not a schedule.
+    expect(partSummaryLine({ name: 'Valve', type: 'wear', replace_interval: 36 })).toBe('');
+  });
+});
+
+describe('metadataBaseSchema / metadataDependentSchema', () => {
+  it('splits the type and label from the value control the type decides', () => {
+    expect(names(metadataBaseSchema())).toEqual(['type', 'label']);
+    expect(names(metadataDependentSchema({ type: 'text', label: '', value: '' }))).toEqual(['value']);
+    expect(names(metadataDependentSchema({ type: 'date', label: '', value: '' }))).toEqual(['value', 'track']);
+    const m = { type: 'date', label: 'Warranty', value: '' };
+    expect(metadataSchema(m)).toEqual([...metadataBaseSchema(), ...metadataDependentSchema(m)]);
+  });
+});
+
+// Absolute shapes, not only relative ones: a mutant that flips every comparison in
+// `partDependentKey` keeps two parts *different* while lying about both.
+describe('partDependentKey — the exact shape', () => {
+  it('spells out each gate in order', () => {
+    expect(partDependentKey({ name: 'x', type: 'consumable' })).toBe('false,false,false,false');
+    expect(
+      partDependentKey({ name: 'x', type: 'wear', stock: 0, reorder_at: 0, create_buy_task: true }),
+    ).toBe('true,true,true,true');
+    expect(partDependentKey({ name: 'x', type: 'consumable', stock: 2 })).toBe('false,true,false,false');
+  });
+  it('offers nothing dependent for a part that tracks nothing', () => {
+    expect(partDependentSchema({ name: 'x', type: 'consumable' })).toEqual([]);
+  });
+});
+
+describe('partFormData — zeros and blanks survive the seeding', () => {
+  it('keeps a zero quantity as zero, not as empty', () => {
+    const data = partFormData({
+      name: '',
+      type: 'consumable',
+      cost: 0,
+      stock: 0,
+      reorder_at: 0,
+      consume_quantity: 0,
+      restock_quantity: 0,
+      replace_interval: 0,
+    });
+    expect(data).toMatchObject({
+      part_name: '',
+      cost: 0,
+      stock: 0,
+      reorder_at: 0,
+      consume_quantity: 0,
+      restock_quantity: 0,
+      replace_interval: 0,
+    });
+  });
+  it('defaults a part with nothing set', () => {
+    expect(partFormData({})).toEqual({
+      part_name: '',
+      part_number: '',
+      type: 'consumable',
+      vendor: '',
+      cost: undefined,
+      part_url: '',
+      notes: '',
+      stock: undefined,
+      reorder_at: undefined,
+      stock_unit: '',
+      consume_quantity: undefined,
+      create_buy_task: false,
+      restock_quantity: undefined,
+      replace_interval: undefined,
+      replace_unit: 'months',
+      last_replaced: undefined,
+    });
+  });
+});
+
+describe('mergePartForm — every field is guarded by its own key', () => {
+  const full = {
+    id: 'p1',
+    name: 'Anode rod',
+    part_number: 'AR-1',
+    type: 'wear',
+    vendor: 'Home Depot',
+    cost: 35,
+    url: 'https://x.example',
+    notes: 'Torque to 40 Nm',
+    stock: 2,
+    reorder_at: 1,
+    stock_unit: 'pcs',
+    consume_quantity: 1,
+    create_buy_task: true,
+    restock_quantity: 2,
+    replace_interval: 12,
+    replace_unit: 'months',
+    last_replaced: '2025-05-01',
+    file_name: 'r.pdf',
+  };
+
+  it('changes nothing when the event carries nothing', () => {
+    expect(mergePartForm(full, {})).toEqual(full);
+  });
+
+  it('reads a present-but-null text field as empty, and a null number as unset', () => {
+    const next = mergePartForm(full, {
+      part_name: null,
+      part_number: null,
+      vendor: null,
+      part_url: null,
+      notes: null,
+      stock_unit: null,
+      cost: null,
+      type: null,
+      replace_unit: undefined,
+      last_replaced: '2026-01-02',
+    });
+    expect(next).toMatchObject({
+      name: '',
+      part_number: '',
+      vendor: '',
+      url: '',
+      notes: '',
+      stock_unit: '',
+      cost: null,
+      type: 'consumable',
+      last_replaced: '2026-01-02',
+    });
+    // A consumable has no schedule, whatever the unit event said.
+    expect(next.replace_interval).toBeNull();
+    expect(next.replace_unit).toBeNull();
+  });
+
+  it('carries each field it is given, one at a time', () => {
+    const cases = [
+      ['part_name', 'Rod', 'name', 'Rod'],
+      ['part_number', 'AR-2', 'part_number', 'AR-2'],
+      ['vendor', 'Amazon', 'vendor', 'Amazon'],
+      ['cost', '40', 'cost', 40],
+      ['part_url', ' https://y.example ', 'url', 'https://y.example'],
+      ['notes', 'n', 'notes', 'n'],
+      ['stock', '3', 'stock', 3],
+      ['reorder_at', '2', 'reorder_at', 2],
+      ['stock_unit', ' ml ', 'stock_unit', 'ml'],
+      ['consume_quantity', '0.5', 'consume_quantity', 0.5],
+      ['restock_quantity', '4', 'restock_quantity', 4],
+      ['replace_interval', '6', 'replace_interval', 6],
+      ['replace_unit', 'weeks', 'replace_unit', 'weeks'],
+      ['last_replaced', '2026-02-03', 'last_replaced', '2026-02-03'],
+    ];
+    for (const [key, given, field, expected] of cases) {
+      const next = mergePartForm(full, { [key]: given });
+      expect(next[field], key).toEqual(expected);
+      // …and only that field moved.
+      const rest = { ...next };
+      delete rest[field];
+      const before = { ...full };
+      delete before[field];
+      expect(rest, `${key} must touch nothing else`).toEqual(before);
+    }
+    expect(mergePartForm(full, { create_buy_task: false })).toMatchObject({
+      create_buy_task: false,
+      restock_quantity: null,
+    });
   });
 });

@@ -88,8 +88,12 @@ import {
   scanRequired,
   type PanelLocation,
   type PanelView,
+  ASSET_TABS,
   type AssetTab,
   DEFAULT_ASSET_TAB,
+  DEFAULT_TASK_TAB,
+  TASK_TABS,
+  type TaskTab,
   type SettingsSection,
 } from './utils';
 
@@ -239,7 +243,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
   // A form to open once the pending navigation settles in `_applyLocation` (opening
   // an edit form from a detail page changes the URL, which would otherwise clear it).
   private _pendingEdit: Partial<Task> | null = null;
-  private _pendingAssetEdit: Partial<Asset> | null = null;
+  private _pendingAssetEdit: AssetEditState | null = null;
   // What is being note-edited inline on a detail page, or null. Notes are long-form
   // prose that renders as Markdown, so both tasks and appliances get a dedicated
   // full-width editor on their detail page rather than a cramped row in the edit form
@@ -325,7 +329,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
       this._pendingEdit = null;
     }
     if (this._pendingAssetEdit) {
-      this._assetEdit = { open: true, asset: this._pendingAssetEdit };
+      this._assetEdit = { ...this._pendingAssetEdit, open: true };
       this._pendingAssetEdit = null;
     }
     this._render();
@@ -566,13 +570,20 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     // Drilling in is a Back-able step: push. An appliance opens on its default
     // sub-tab; `buildPath` leaves that one out of the URL.
     const detail =
-      kind === 'asset' ? { kind, id, tab: DEFAULT_ASSET_TAB } : { kind, id };
+      kind === 'asset' ? { kind, id, tab: DEFAULT_ASSET_TAB } : { kind, id, tab: DEFAULT_TASK_TAB };
     this._navigate({ view: kind === 'asset' ? 'appliances' : 'tasks', detail });
   }
 
   /** Which sub-tab the open appliance detail is showing. */
   _assetTab(): AssetTab {
-    return this._detail?.tab ?? DEFAULT_ASSET_TAB;
+    const tab = this._detail?.tab;
+    return tab && (ASSET_TABS as readonly string[]).includes(tab) ? (tab as AssetTab) : DEFAULT_ASSET_TAB;
+  }
+
+  /** Which sub-tab the open task detail is showing. */
+  _taskTab(): TaskTab {
+    const tab = this._detail?.tab;
+    return tab && (TASK_TABS as readonly string[]).includes(tab) ? (tab as TaskTab) : DEFAULT_TASK_TAB;
   }
 
   /**
@@ -584,6 +595,13 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     const detail = this._detail;
     if (!detail || detail.kind !== 'asset' || this._assetTab() === tab) return;
     this._navigate({ view: 'appliances', detail: { ...detail, tab } }, true);
+  }
+
+  /** Switch the open task's sub-tab — the same lateral, replacing move. */
+  _setTaskTab(tab: TaskTab): void {
+    const detail = this._detail;
+    if (!detail || detail.kind !== 'task' || this._taskTab() === tab) return;
+    this._navigate({ view: 'tasks', detail: { ...detail, tab } }, true);
   }
   /**
    * Leave an open Settings section for the section index — the phone's back arrow.
@@ -1134,22 +1152,42 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     this._assetEdit = { open: true, asset: { kind: 'virtual', parts: [] } };
     this._render();
   }
-  _openEditAsset(asset: Asset): void {
+  _openEditAsset(asset: Asset, reveal?: { part: number | 'new' }): void {
     this._rememberDrawerOpener();
     // Opens beside the page it was pressed on — the appliance's own page keeps its
     // parts, documents and history in view while the form is up. See `_openEdit` for
     // the cross-view case and the pending-edit dance that survives `_applyLocation`
     // clearing ephemeral forms on a route change.
+    const parts = [...(asset.parts || [])];
+    // The Parts tab's Edit and Add part land on one part rather than the top of the
+    // form: the row is expanded, the Parts section it lives in is forced open, and
+    // the next render scrolls to it (a new part also takes the keyboard).
+    let openPart: number | undefined;
+    if (reveal?.part === 'new') {
+      parts.push({ name: '', type: 'consumable' });
+      openPart = parts.length - 1;
+    } else if (typeof reveal?.part === 'number') {
+      openPart = reveal.part;
+    }
     const seeded: Partial<Asset> = {
       ...asset,
-      parts: [...(asset.parts || [])],
+      parts,
       metadata: (asset.metadata || []).map((m) => ({ ...m })),
     };
+    const state: AssetEditState = reveal
+      ? {
+          open: true,
+          asset: seeded,
+          openPart,
+          revealPart: reveal.part === 'new' ? 'focus' : 'scroll',
+          openSections: { parts: true },
+        }
+      : { open: true, asset: seeded };
     if (this._view === 'appliances' && this._editsThisPage('asset', asset.id)) {
-      this._assetEdit = { open: true, asset: seeded };
+      this._assetEdit = state;
       this._render();
     } else {
-      this._pendingAssetEdit = seeded;
+      this._pendingAssetEdit = state;
       this._navigate({ view: 'appliances', detail: null });
     }
   }
@@ -1326,6 +1364,20 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     );
   }
 
+  /** The open drawer's *session*, as one comparable key — or null when closed.
+   *  Keyed by the edit-state object itself: every open builds a new one, and nothing
+   *  replaces it while the form is up (the form's handlers write into it, or swap
+   *  the draft *inside* it — `mergeAsset` replaces `_assetEdit.asset` on every
+   *  keystroke, which is why the draft is not the key). */
+  private get _drawerSubject(): object | null {
+    if (this._view === 'tasks' && this._edit.open) return this._edit;
+    if (this._view === 'appliances' && this._assetEdit.open) return this._assetEdit;
+    return null;
+  }
+  // The session the last render drew the drawer for, so the next one can tell "the
+  // same form, rebuilt" from "a different form" when deciding to keep the scroll.
+  private _renderedDrawerSubject: object | null = null;
+
   // ── rendering ───────────────────────────────────────────────────────────────
   _render(): void {
     if (!this.shadowRoot) return;
@@ -1340,6 +1392,16 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     // Everything below is rebuilt from scratch, so every preview on screen is about to
     // be detached — cancel its pending debounce rather than leaking a timer.
     this._disposeAllPreviews();
+    // The drawer's scroller is rebuilt with everything else, at scrollTop 0. A render
+    // the drawer asked for itself — Add part, Remove part, an upload landing — used to
+    // throw the reader to the top of a form they were halfway down; the position is
+    // put back below, before anything paints.
+    // `_drawerSubject` is read *after* the state that opened this render has been
+    // set, so a drawer that swaps to another object (Edit on a second row while one
+    // is open) starts that form at its top rather than wherever the last one was.
+    const drawerScroll =
+      this.shadowRoot.querySelector<HTMLElement>('.hk-drawer-sticky')?.scrollTop ?? 0;
+    const drawerSubject = this._drawerSubject;
     const onTasks = this._view === 'tasks';
 
     let inner: string;
@@ -1443,6 +1505,11 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
       <div id="hk-dialog-host"></div>
     `;
     this._hydrate();
+    if (drawerScroll && drawerSubject && drawerSubject === this._renderedDrawerSubject) {
+      const scroller = this.shadowRoot.querySelector<HTMLElement>('.hk-drawer-sticky');
+      if (scroller) scroller.scrollTop = drawerScroll;
+    }
+    this._renderedDrawerSubject = drawerSubject;
     this._restoreFocus(focused);
     this._syncDrawerModality();
   }
@@ -1491,7 +1558,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
    * nothing else has claimed focus in the meantime, so a deferred restore can never
    * steal the caret from wherever the reader has since moved.
    */
-  private _focus(el: HTMLElement | null): void {
+  _focus(el: HTMLElement | null): void {
     if (!el || typeof el.focus !== 'function') return;
     try {
       el.focus({ preventScroll: true });

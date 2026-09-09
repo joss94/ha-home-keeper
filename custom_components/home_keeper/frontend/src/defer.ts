@@ -25,16 +25,18 @@ import {
 export interface DeferVerbs {
   snooze: boolean;
   skip: boolean;
+  pullForward: boolean;
 }
 
 /**
  * The verbs *task* may be offered, given the integration's options.
  *
- * Both switches default on, so a missing key means "not configured", not "off" —
- * `skipSnoozeFlags` is what encodes that. On top of the global switch two per-task
- * conditions apply: skip is refused on a completion-blocked task, because the store
- * rejects it and a button that always errors is worse than no button; and snooze is
- * refused on a dormant task, which has no due date to defer.
+ * All three switches default on, so a missing key means "not configured", not
+ * "off" — `skipSnoozeFlags` is what encodes that. On top of the global switch two
+ * per-task conditions apply: skip is refused on a completion-blocked task, because
+ * the store rejects it and a button that always errors is worse than no button;
+ * and snooze / pull-forward are refused on a dormant task, which has no due date
+ * to defer or pull forward.
  *
  * Hiding rather than disabling: a control that explains why it is dead earns its
  * place when the action is the page's whole point, but these are already tucked
@@ -42,12 +44,16 @@ export interface DeferVerbs {
  */
 export function deferVerbs(
   task: Task,
-  options: { allow_snooze?: unknown; allow_skip?: unknown },
+  options: { allow_snooze?: unknown; allow_skip?: unknown; allow_pull_forward?: unknown },
 ): DeferVerbs {
-  const { allowSnooze, allowSkip } = skipSnoozeFlags(options);
+  const { allowSnooze, allowSkip, allowPullForward } = skipSnoozeFlags(options);
   const blocked = !!task.managed_by?.completion_blocked;
   const dormant = !task.next_due;
-  return { snooze: allowSnooze && !dormant, skip: allowSkip && !blocked && !dormant };
+  return {
+    snooze: allowSnooze && !dormant,
+    skip: allowSkip && !blocked && !dormant,
+    pullForward: allowPullForward && !dormant,
+  };
 }
 
 /** The menu's entries, as markup. Exported for the card, which sizes its own caret. */
@@ -63,6 +69,14 @@ export function deferMenuItems(verbs: DeferVerbs): string {
       : '') +
     (verbs.skip
       ? item('hk-defer-skip', 'mdi:skip-next-outline', t('btn.skip'), t('defer.skipHint'))
+      : '') +
+    (verbs.pullForward
+      ? item(
+          'hk-defer-pull-forward',
+          'mdi:calendar-arrow-left',
+          t('btn.pullForward'),
+          t('defer.pullForwardHint'),
+        )
       : '')
   );
 }
@@ -70,8 +84,8 @@ export function deferMenuItems(verbs: DeferVerbs): string {
 /**
  * Wrap *doneBtn* in a split button whose caret opens the deferral menu.
  *
- * Returns *doneBtn* untouched when there is no verb to offer, so a task with both
- * switches off — or a dormant one — looks exactly as it did before this existed.
+ * Returns *doneBtn* untouched when there is no verb to offer, so a task with every
+ * switch off — or a dormant one — looks exactly as it did before this existed.
  * *weight* must be the weight *doneBtn* itself carries; see below.
  */
 export function deferSplit(
@@ -80,7 +94,7 @@ export function deferSplit(
   verbs: DeferVerbs,
   weight: BtnWeight = 'primary',
 ): string {
-  if (!doneBtn || (!verbs.snooze && !verbs.skip)) return doneBtn;
+  if (!doneBtn || (!verbs.snooze && !verbs.skip && !verbs.pullForward)) return doneBtn;
   // The caret is an ha-button carrying *Done's own weight*, which is the only way the
   // two halves are guaranteed to paint the same. Home Assistant fills a button from
   // its appearance, and the weights differ by surface — the task page's Done is solid
@@ -111,7 +125,7 @@ export function deferSplit(
  * caret. A card row is a list you scan, and a chevron with no container to lean on
  * read as decoration — so here the verbs are simply present, muted, ahead of Done.
  *
- * Returns '' when neither verb is on offer, which leaves the row exactly as it was
+ * Returns '' when no verb is on offer, which leaves the row exactly as it was
  * before this existed.
  */
 export function deferRowActions(task: Task, verbs: DeferVerbs): string {
@@ -121,7 +135,8 @@ export function deferRowActions(task: Task, verbs: DeferVerbs): string {
     `label="${escapeHTML(label)}" title="${escapeHTML(label)}"></ha-icon-button>`;
   return (
     (verbs.snooze ? btn('hk-defer-snooze', t('btn.snooze')) : '') +
-    (verbs.skip ? btn('hk-defer-skip', t('btn.skip')) : '')
+    (verbs.skip ? btn('hk-defer-skip', t('btn.skip')) : '') +
+    (verbs.pullForward ? btn('hk-defer-pull-forward', t('btn.pullForward')) : '')
   );
 }
 

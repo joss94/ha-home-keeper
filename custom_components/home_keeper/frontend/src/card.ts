@@ -69,6 +69,11 @@ const MDI_CLOCK =
   '14.92L16.25,16.15L11,13V7H12.5Z';
 const MDI_SKIP =
   'M5,5V19L16,12M18,5V19H20V5H18Z';
+// mdi:calendar-arrow-left — the row's pull-forward action, pulling a task's due
+// date back to today.
+const MDI_PULL_FORWARD =
+  'M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-2 .89-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2V5a2 2' +
+  ' 0 00-2-2m0 16H5V8h14v11m-7-9v2h4v3h-4v2l-4-3.5 4-3.5Z';
 /** How long a press has to be held before the row action explains itself. */
 const LONG_PRESS_MS = 500;
 // mdi:plus — the header "add task" action.
@@ -620,6 +625,25 @@ export class HomeKeeperCard extends HTMLElement {
     await this._refresh();
   }
 
+  /**
+   * Pull a task's due date to today, independent of its periodic schedule.
+   *
+   * No dialog — a single tap does it, mirroring how Snooze/Skip need a dialog for
+   * their extra input but this needs none. Not a completion: last_completed and
+   * the recurrence are untouched.
+   */
+  private async _pullForward(task: Task): Promise<void> {
+    if (!this._hass) return;
+    try {
+      await api.pullForwardTask(this._hass, task.id);
+    } catch (err) {
+      console.error('home-keeper-card: pull forward failed', err);
+      toast(this, t('error.actionFailed'));
+      return;
+    }
+    await this._refresh();
+  }
+
   private _openCreate(): void {
     this._edit = {
       open: true,
@@ -1025,6 +1049,13 @@ export class HomeKeeperCard extends HTMLElement {
       this._skip = { ...emptySkipState(), open: true, task };
       this._render();
     });
+    wireAction(
+      '.hk-defer-pull-forward',
+      MDI_PULL_FORWARD,
+      'btn.pullForward',
+      'defer.pullForwardHint',
+      (task) => void this._pullForward(task),
+    );
 
     if (host && this._snooze.open) {
       renderSnoozeDialog(this._deferHost, this._snooze, host, () => {

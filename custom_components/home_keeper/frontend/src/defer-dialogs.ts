@@ -26,6 +26,7 @@ export interface DeferMenuHost {
   taskById(id: string): Task | undefined;
   onSnooze(task: Task): void;
   onSkip(task: Task): void;
+  onPullForward(task: Task): void;
 }
 
 /**
@@ -84,6 +85,10 @@ export class DeferMenus {
     menu.querySelector('.hk-defer-skip')?.addEventListener('click', () => {
       this.close();
       this.host.onSkip(task);
+    });
+    menu.querySelector('.hk-defer-pull-forward')?.addEventListener('click', () => {
+      this.close();
+      this.host.onPullForward(task);
     });
   }
 

@@ -47,6 +47,7 @@ from .const import (
     EVENT_TASK_COMPLETION_UPDATED,
     EVENT_TASK_CREATED,
     EVENT_TASK_DELETED,
+    EVENT_TASK_PULLED_FORWARD,
     EVENT_TASK_SKIP_REMOVED,
     EVENT_TASK_SKIP_UPDATED,
     EVENT_TASK_SKIPPED,
@@ -553,6 +554,46 @@ class HomeKeeperStore:
                 existing,
                 extra={"snoozed_until": existing["next_due"], "origin": origin},
             ),
+        )
+        return existing
+
+    async def pull_forward_task(
+        self, task_id: str, *, origin: str | None = None
+    ) -> dict[str, Any]:
+        """Pull a task's ``next_due`` to now, independent of its periodic schedule.
+
+        The mirror image of :meth:`snooze_task`: "I want to do this today, not on its
+        usual date." Like snooze, this touches *only* ``next_due`` — recurrence,
+        ``last_completed`` and the completion history are untouched, so the next time
+        the task is actually completed the schedule resumes exactly where it would
+        have without this call. Because ``next_due`` changes, the coordinator re-arms
+        the edge-triggered overdue/due-soon events for the new (immediate) date.
+        Rejects a **dormant** task (``next_due is None``) — there's no scheduled due
+        date to pull forward. Fires ``home_keeper_task_pulled_forward``.
+
+        Like ``snooze_task`` (and unlike ``complete_task``/``skip_task``), this
+        **accepts a synced problem-sensor task**: it asserts nothing about the
+        problem being resolved, only that the reminder should land now rather than
+        on its own schedule, so it survives the sync the same way a snooze does.
+        """
+        existing = self._tasks.get(task_id)
+        if existing is None:
+            raise KeyError(task_id)
+        if existing.get("next_due") is None:
+            # A dormant task (a completed one-off, or a condition/sensor task not yet
+            # armed) has no scheduled due date to pull forward; see snooze_task's
+            # identical guard, which this mirrors.
+            raise models.TaskValidationError(
+                "This task is dormant (no due date) — pull-forward only moves up a "
+                "task that is currently scheduled. Re-arm it instead (undo a "
+                "completion, or wait for its condition/sensor)."
+            )
+        existing["next_due"] = dt_util.now().isoformat()
+        await self._save()
+        _LOGGER.debug("Pulled forward task %s to %s", task_id, existing["next_due"])
+        self._hass.bus.async_fire(
+            EVENT_TASK_PULLED_FORWARD,
+            events.task_event_data(existing, extra={"origin": origin}),
         )
         return existing
 

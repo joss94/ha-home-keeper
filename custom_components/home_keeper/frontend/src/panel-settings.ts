@@ -128,8 +128,11 @@ export function settingsSectionList(p: PanelHost): {
     {
       key: 'skipsnooze',
       card: 'hk-settings-skipsnooze',
-      // Both switches default on, so the dot is green unless one has been turned
-      // off — the state worth spotting from the rail is a *withdrawn* verb.
+      // Both original switches default on, so the dot is green unless one has been
+      // turned off — the state worth spotting from the rail is a *withdrawn* verb.
+      // Pull forward isn't part of this indicator: it's a separate, purely-additive
+      // switch and folding it in here would mean rewriting the well-established
+      // snooze/skip summary strings for a change that doesn't otherwise touch them.
       label: t('settings.skipsnooze_heading'),
       mark: dot(
         skipSnoozeFlags(opts ?? {}).allowSnooze && skipSnoozeFlags(opts ?? {}).allowSkip
@@ -273,11 +276,12 @@ function renderSettingsForm(p: PanelHost, host: HTMLElement): void {
     shopping_list_entity: '',
     profiles: [],
     notifications: [],
-    // Both verbs predate the switch, so "not configured" means on. This fallback is
-    // only reached before the first load answers; `skipSnoozeFlags` is what reads
-    // them once options are in hand.
+    // All three verbs predate the switch, so "not configured" means on. This
+    // fallback is only reached before the first load answers; `skipSnoozeFlags` is
+    // what reads them once options are in hand.
     allow_snooze: true,
     allow_skip: true,
+    allow_pull_forward: true,
   };
   // General — settings independent of any single feature (e.g. one-off retention).
   host.appendChild(
@@ -326,7 +330,8 @@ function renderSettingsForm(p: PanelHost, host: HTMLElement): void {
       },
     ),
   );
-  // Skip & snooze — whether the two deferral verbs are offered at all.
+  // Skip, snooze & pull forward — whether the three deferral verbs are offered at
+  // all.
   host.appendChild(
     settingsCard(
       p,
@@ -423,6 +428,10 @@ function settingsCard(
  */
 function settingsSummary(p: PanelHost, id: string, opts: HomeKeeperOptions): string {
   if (id === 'hk-settings-skipsnooze') {
+    // Deliberately reports only Snooze/Skip, exactly as before Pull forward
+    // existed: it's a purely-additive switch, and folding it into this summary
+    // would mean rewriting the well-established both/only/neither strings for a
+    // change that doesn't otherwise touch them.
     const { allowSnooze, allowSkip } = skipSnoozeFlags(opts);
     if (allowSnooze && allowSkip) return t('settings.skipsnooze_both');
     if (allowSnooze) return t('settings.skipsnooze_snooze_only');

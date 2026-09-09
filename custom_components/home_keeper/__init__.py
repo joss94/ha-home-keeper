@@ -54,6 +54,7 @@ from .assets import AssetValidationError, card_projection
 from .const import (
     COMPLETION_ENTRY_FIELDS,
     DOMAIN,
+    OPTION_ALLOW_PULL_FORWARD,
     OPTION_ALLOW_SKIP,
     OPTION_ALLOW_SNOOZE,
     OPTION_DISMISSED_COMPANIONS,
@@ -241,6 +242,15 @@ SKIP_TASK_SCHEMA = vol.Schema(
         vol.Optional("note"): cv.string,
         vol.Optional("who"): cv.string,
         vol.Optional("reading"): vol.Coerce(float),
+    }
+)
+# Pull-forward: move a task's due date to now, independent of its periodic schedule
+# — the mirror of snooze. ``origin`` is echoed in the home_keeper_task_pulled_forward
+# event for loop prevention, matching snooze/skip.
+PULL_FORWARD_TASK_SCHEMA = vol.Schema(
+    {
+        vol.Required("task_id"): cv.string,
+        vol.Optional("origin"): cv.string,
     }
 )
 
@@ -522,10 +532,12 @@ NOTIFY_SCHEMA = vol.Schema(
 SET_OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Optional(OPTION_SYNC_PROBLEM_SENSORS): cv.boolean,
-        # Whether the panel and notification button sets offer Snooze / Skip. The
-        # services themselves stay callable either way (see const.OPTION_ALLOW_SNOOZE).
+        # Whether the panel and notification button sets offer Snooze / Skip /
+        # Pull forward. The services themselves stay callable either way (see
+        # const.OPTION_ALLOW_SNOOZE).
         vol.Optional(OPTION_ALLOW_SNOOZE): cv.boolean,
         vol.Optional(OPTION_ALLOW_SKIP): cv.boolean,
+        vol.Optional(OPTION_ALLOW_PULL_FORWARD): cv.boolean,
         vol.Optional(OPTION_ONE_OFF_RETENTION_DAYS): vol.All(
             vol.Coerce(int), vol.Range(min=0)
         ),
@@ -1118,6 +1130,15 @@ def _register_services(hass: HomeAssistant) -> None:
             )
         await coord.async_request_refresh()
 
+    async def handle_pull_forward_task(call: ServiceCall) -> None:
+        coord = _coordinator()
+        task_id = _task_ref(coord, call.data["task_id"])
+        with _store_errors(task_id=task_id):
+            await coord.store.pull_forward_task(task_id, origin=call.data.get("origin"))
+        # Pull-forward only moves next_due (like snooze); the per-task entity set is
+        # unchanged, so a refresh is enough — no entry reload.
+        await coord.async_request_refresh()
+
     async def handle_update_skip(call: ServiceCall) -> None:
         coord = _coordinator()
         task_id = _task_ref(coord, call.data["task_id"])
@@ -1395,6 +1416,12 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, "skip_task", handle_skip_task, SKIP_TASK_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "pull_forward_task",
+        handle_pull_forward_task,
+        PULL_FORWARD_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN, "update_skip", handle_update_skip, UPDATE_SKIP_SCHEMA

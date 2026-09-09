@@ -325,6 +325,20 @@ export async function skipTask(hass: Hass, taskId: string, metadata?: SkipMetada
   return res.task;
 }
 
+/**
+ * Move a task's due date to now, independent of its periodic schedule.
+ *
+ * The mirror of `snoozeTask`: no dialog, no metadata — a single tap says "today,
+ * not on its usual date." Like a snooze, this is never a completion.
+ */
+export async function pullForwardTask(hass: Hass, taskId: string): Promise<Task> {
+  const res = await hass.callWS<{ task: Task }>({
+    type: 'home_keeper/pull_forward_task',
+    task_id: taskId,
+  });
+  return res.task;
+}
+
 /** Amend a recorded skip's detail (identified by its `ts`). */
 export async function updateSkip(
   hass: Hass,

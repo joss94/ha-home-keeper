@@ -43,11 +43,23 @@ TARGET_PERSISTENT = "persistent_notification"
 
 # Notification action verbs (the button behaviours). ``open`` is a client-side URI
 # deep-link (no backend callback).
+#
+# Deliberately does NOT include Pull forward. A notification only ever surfaces a
+# task that is already overdue or due-soon (that's what triggers it), so "move the
+# due date to today" is nearly a no-op there and just confusing — it earns its
+# place on the panel/dashboard card, where a task not due for weeks is exactly what
+# it's for. See docs/EVENTS.md and the `home_keeper.pull_forward_task` service,
+# which stays available either way.
 ACTION_COMPLETE = "complete"
 ACTION_SNOOZE = "snooze"
 ACTION_SKIP = "skip"
 ACTION_OPEN = "open"
-ACTIONS = (ACTION_COMPLETE, ACTION_SNOOZE, ACTION_SKIP, ACTION_OPEN)
+ACTIONS = (
+    ACTION_COMPLETE,
+    ACTION_SNOOZE,
+    ACTION_SKIP,
+    ACTION_OPEN,
+)
 DEFAULT_ACTIONS = [ACTION_COMPLETE, ACTION_SNOOZE, ACTION_OPEN]
 
 # Per-notification delivery style.

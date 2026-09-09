@@ -6,6 +6,19 @@ All notable changes to Home Keeper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic
 versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
 
+## [0.23.0b1]
+
+### Added
+
+- **Pull forward.** Alongside Snooze and Skip, a task's Done button now offers Pull
+  forward: it moves the due date to today, independent of the periodic schedule, so
+  a chore you want to do now doesn't wait for its usual date. Like Snooze, it never
+  records a completion or changes the recurrence — undo it by snoozing or completing
+  the task as usual. Available from the panel, the dashboard card, and the new
+  `home_keeper.pull_forward_task` service — deliberately not a notification button,
+  since a notified task is already overdue or due soon. Turn it off in
+  **Settings → Skip, snooze & pull forward**.
+
 ## [0.22.0] - 2026-09-08
 
 ### Added

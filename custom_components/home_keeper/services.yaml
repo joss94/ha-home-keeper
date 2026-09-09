@@ -726,6 +726,30 @@ skip_task:
       selector:
         text:
 
+pull_forward_task:
+  name: Pull forward task
+  description: >-
+    Move a task's due date to now, independent of its periodic schedule: "I want to
+    do this today, not on its usual date." Like Snooze, this does not record a
+    completion or change the recurrence — last_completed and the completion history
+    are untouched, so the schedule resumes normally the next time the task is
+    completed.
+  fields:
+    task_id:
+      name: Task name or ID
+      description: The id of the task to pull forward. Its name works too. The panel shows the id.
+      required: true
+      selector:
+        text:
+    origin:
+      name: Origin
+      description: >-
+        Optional free-form marker echoed back in the home_keeper_task_pulled_forward
+        event so a contributing integration can recognise and ignore the pull-forward
+        it triggered (loop prevention), and Home Keeper never interprets it.
+      selector:
+        text:
+
 update_skip:
   name: Update skip
   description: >-

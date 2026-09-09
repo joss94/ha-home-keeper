@@ -28,37 +28,47 @@ const task = (over = {}) => ({
 });
 
 describe('deferVerbs', () => {
-  it('offers both verbs when nothing is configured', () => {
+  it('offers every verb when nothing is configured', () => {
     // The switches default *on*, so an install that predates them — every existing
-    // one — must read as "offer both" rather than as "both off".
-    expect(deferVerbs(task(), {})).toEqual({ snooze: true, skip: true });
+    // one — must read as "offer everything" rather than as "all off".
+    expect(deferVerbs(task(), {})).toEqual({ snooze: true, skip: true, pullForward: true });
   });
 
   it('withdraws each verb independently when its switch is off', () => {
     expect(deferVerbs(task(), { allow_snooze: false })).toEqual({
       snooze: false,
       skip: true,
+      pullForward: true,
     });
     expect(deferVerbs(task(), { allow_skip: false })).toEqual({
       snooze: true,
       skip: false,
+      pullForward: true,
+    });
+    expect(deferVerbs(task(), { allow_pull_forward: false })).toEqual({
+      snooze: true,
+      skip: true,
+      pullForward: false,
     });
   });
 
-  it('offers neither verb on a dormant task', () => {
-    // No due date is nothing to defer: snooze raises in the store and skip has no
-    // occurrence to move past.
+  it('offers no verb on a dormant task', () => {
+    // No due date is nothing to defer: snooze and pull forward raise in the store,
+    // and skip has no occurrence to move past.
     expect(deferVerbs(task({ next_due: null }), {})).toEqual({
       snooze: false,
       skip: false,
+      pullForward: false,
     });
   });
 
-  it('offers snooze but not skip on a completion-blocked task', () => {
+  it('offers snooze and pull forward but not skip on a completion-blocked task', () => {
     // The store rejects skipping a synced problem task, but a notification walk
-    // still has to be able to get past it — so snooze deliberately survives.
+    // still has to be able to get past it — so snooze (and, alongside it, pull
+    // forward, which asserts nothing about the problem either) deliberately
+    // survive.
     const blocked = task({ managed_by: { completion_blocked: true } });
-    expect(deferVerbs(blocked, {})).toEqual({ snooze: true, skip: false });
+    expect(deferVerbs(blocked, {})).toEqual({ snooze: true, skip: false, pullForward: true });
   });
 });
 

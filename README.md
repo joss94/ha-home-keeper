@@ -427,25 +427,31 @@ who made the decision.
 
 <img src="docs/images/53-panel-skip-in-history.png" alt="A task's history with a skipped occurrence marked as skipped, sitting between two completions" width="820">
 
-Snooze and skip are also services, so an automation can defer a task without the
-panel. `home_keeper.snooze_task` accepts `hours`, or an exact date and time in
-`until`. `home_keeper.skip_task` records a skip. 3 more services edit the
-recorded skips:
+Snooze, skip and pull forward are also services, so an automation can move a task
+without the panel. `home_keeper.snooze_task` accepts `hours`, or an exact date and
+time in `until`. `home_keeper.skip_task` records a skip. `home_keeper.pull_forward_task`
+moves a task's due date to today, independent of its periodic schedule — the mirror
+of snooze, and just as much not a completion. 3 more services edit the recorded
+skips:
 
 - `home_keeper.update_skip` changes the note or the person on an entry.
 - `home_keeper.move_skip` changes the date of an entry.
 - `home_keeper.delete_skip` removes an entry and undoes the skip.
 
-The dashboard card supports both, on the row of each task, and opens the same
-dialogs as the panel.
+The dashboard card supports all three, on the row of each task, and opens the same
+dialogs as the panel (pull forward acts immediately, with no dialog to open).
 
 <img src="docs/images/card-skip-snooze-row.png" alt="A dashboard card whose rows show a snooze and a skip button ahead of the accent Done button" width="330">
 
-To turn snooze or skip off, open **Settings** and then **Skip & snooze**. Both
-start on. Home Keeper removes the one that is off from the panel, from the card,
-and from the notification buttons. The `home_keeper.snooze_task` and
-`home_keeper.skip_task` services continue to work, so an existing automation is
-not affected.
+To turn snooze, skip or pull forward off, open **Settings** and then
+**Skip, snooze & pull forward**. All three start on. Home Keeper removes Snooze
+or Skip that is off from the panel, the card, and the notification buttons. Pull
+forward has no notification button to begin with — a notified task is already
+overdue or due soon, so moving its due date to today would be nearly a no-op —
+so turning it off removes it only from the panel and the card. The
+`home_keeper.snooze_task`, `home_keeper.skip_task` and
+`home_keeper.pull_forward_task` services continue to work, so an existing
+automation is not affected.
 
 ## Complete tasks with NFC/RFID tags
 
@@ -1530,7 +1536,9 @@ lists all of them with their fields.
   changes a recorded completion's timestamp, identified by its current `old_ts`.
   `trigger_task` arms a condition-driven task. `snooze_task` defers the due date
   by `hours` without completing the task. `skip_task` advances the task to its
-  next occurrence without completing it. `set_task_consumable` links a task to an
+  next occurrence without completing it. `pull_forward_task` moves the due date to
+  today instead, independent of the periodic schedule, also without completing
+  it. `set_task_consumable` links a task to an
   appliance consumable, so a completion draws down its stock. Omit the ids to
   unlink. `list_tasks` returns a response.
 <!-- vale ai-tells.OverusedVocabulary = NO -->

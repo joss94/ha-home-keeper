@@ -24,7 +24,7 @@ import { emptySkipState, emptySnoozeState, type SkipState, type SnoozeState } fr
 import { DeferMenus } from './defer-dialogs';
 import { controls, patchFilterCounts, wireControls } from './panel-controls';
 import { renderDeclarativeDialog } from './panel-declarative';
-import { openSkip, openSnooze, renderSkip, renderSnooze } from './panel-defer';
+import { openSkip, openSnooze, pullForwardTask, renderSkip, renderSnooze } from './panel-defer';
 import { detailView, wireDetail, wireDetailOpeners } from './panel-detail';
 import {
   openCompletionDialog,
@@ -145,6 +145,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     taskById: (id) => this._tasks.find((x) => x.id === id),
     onSnooze: (task) => openSnooze(this, task),
     onSkip: (task) => openSkip(this, task),
+    onPullForward: (task) => void pullForwardTask(this, task),
   });
   _confirmDelete: {
     open: boolean;

@@ -533,7 +533,7 @@
   "settings.sync_problem_sensors": "Synchronizovat senzory problémů jako úkoly",
   "settings.sync_problem_sensors_help": "Synchronizovaný úkol se uzavře, až když zdrojová integrace problém vyřeší, ne když klepnete na Hotovo. Připomenutí u něj nabízejí Odložit místo Hotovo.",
   "settings.skipsnooze_heading": "Přeskočení, odložení a urychlení",
-  "settings.skipsnooze_help": "Odložení posune termín úkolu, aniž by zaznamenalo, že byl hotový. Přeskočení jej posune na další výskyt a zapíše přeskočení odděleně od dokončení. Urychlení místo toho posune termín na dnešek, také bez zaznamenání dokončení — opak odložení. Zobrazuje se jen v panelu a na kartě řídicího panelu, nikdy v oznámení, protože úkol z oznámení je už po termínu, nebo mu brzy vyprší. Vypnutí Odložit nebo Přeskočit ho odstraní z panelu, karty a tlačítek oznámení; vypnutí Urychlit ho odstraní z panelu a karty. Služby home_keeper.snooze_task, skip_task a pull_forward_task fungují dál, takže automatizace to nijak neovlivní. Úkol ze senzoru problému nabízí Odložit i při vypnutém přepínači, protože takové připomenutí nelze posunout ničím jiným.",
+  "settings.skipsnooze_help": "Odložení posune termín úkolu, aniž by zaznamenalo dokončení. Přeskočení jej posune na další výskyt a zapíše to odděleně od dokončení. Urychlení místo toho posune termín na dnešek — opak odložení. Všechny tři služby fungují dál, i když je přepínač zde vypnutý, takže automatizace to neovlivní. Úkol ze senzoru problému stále nabízí Odložit, protože takové připomenutí nelze posunout ničím jiným.",
   "settings.allow_snooze": "Povolit odložení",
   "settings.allow_snooze_help": "Nabízet u úkolu Odložit a umožnit, aby oznámení neslo tlačítko Odložit.",
   "settings.allow_skip": "Povolit přeskočení",

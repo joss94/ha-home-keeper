@@ -518,8 +518,45 @@ siblings instead of their fakes.
   `/home-keeper` panel.
 - Run locally / in a session: `bash ci/e2e-up.sh` (builds the panel, starts HA, runs
   Playwright, tears down). `KEEP_UP=1` leaves HA running.
-- Env prep: `ci/setup-browser-env.sh` (wired to a Claude Code SessionStart hook).
+- Env prep: `ci/setup-browser-env.sh` (Docker plus the browser). `ci/setup-ci-deps.sh`
+  calls it and also installs the other CI dependencies — see "Session setup" below.
 - Auth: `tests/e2e/global-setup.ts` completes onboarding and performs a real login.
+
+## Session setup
+
+`ci/setup-ci-deps.sh` installs every dependency the CI workflows need: the Python
+packages, the npm packages for each of the four projects, vale and its styles,
+ffmpeg for the walkthrough capture, and (through `ci/setup-browser-env.sh`) the
+Docker daemon and Playwright Chromium. A Claude Code SessionStart hook starts it
+in the background; the log is `/tmp/setup-ci-deps.log`.
+
+The script is idempotent. Each step looks first and skips what is already there,
+so it is safe to run again — and it is the way to try a step that failed. No step
+can stop the script: it always prints a summary of what it installed, skipped and
+failed.
+
+```bash
+bash ci/setup-ci-deps.sh          # install what is missing
+FORCE=1 bash ci/setup-ci-deps.sh  # install everything again
+# Leave one part alone:
+SKIP_PYTHON=1  SKIP_NPM=1  SKIP_VALE=1  SKIP_FFMPEG=1  SKIP_BROWSER=1
+```
+
+Only one run can hold the lock directory, because the hook starts the script in
+the background and two sessions can open together. A second run says so and stops.
+The exit status is 1 when a step failed, so a caller does not have to read the log.
+The `mutmut` pin comes from `mutation.yml` and the Python floor from `pyproject.toml`,
+so the script cannot go stale on its own when CI moves a pin.
+
+**The Python packages go in `.venv`** (git ignores it), not in the system Python.
+Activate it before you run a Python lane: `source .venv/bin/activate`. The script
+picks the interpreter for that virtual environment by test, not by name: it tries
+`3.14` (the Home Assistant floor), then `3.13`, then `3.12`, and keeps the first
+one that can run a unit test file. An old Home Assistant imports on a new Python
+and then breaks at the first fixture, so a name check is not enough. When the
+machine has no interpreter at the floor, pip resolves an older Home Assistant —
+the script says so, and `python ci/check-ha-version.py` gives the detail. mypy and
+the Home Assistant unit lane then test an older API than CI does.
 
 ## Typing & quality scale
 

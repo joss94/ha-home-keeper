@@ -70,10 +70,12 @@ test('capture Home Keeper card screenshots', async ({ page }) => {
   await expect(card.locator('a.hk-link-chip').first()).toBeVisible();
   await shotCard(page, card, `${OUT}/card-task-links.png`);
 
-  // 2c. Snooze and skip, on the row (#268). Both sit ahead of Done as their own
-  // buttons, so the default card clip already shows them — this shot names the
-  // feature, and the dialog they open gets its own below.
+  // 2c. Snooze, skip and pull forward, on the row (#268, then pull forward
+  // alongside them). All 3 sit ahead of Done as their own buttons, so the default
+  // card clip already shows them — this shot names the feature, and the dialogs
+  // snooze/skip open get their own below (pull forward acts immediately, no dialog).
   await expect(card.locator('.hk-defer-snooze').first()).toBeVisible();
+  await expect(card.locator('.hk-defer-pull-forward').first()).toBeVisible();
   await shotCard(page, card, `${OUT}/card-skip-snooze-row.png`);
 
   // 3. The grouped-by-status card.

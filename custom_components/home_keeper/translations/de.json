@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Aufgabe vorziehen",
+      "description": "Setzt das Fälligkeitsdatum einer Aufgabe auf jetzt, unabhängig von ihrem periodischen Zeitplan, ohne einen Abschluss zu erfassen oder ihre Wiederholung zu ändern.",
+      "fields": {
+        "task_id": {
+          "name": "Aufgabenname oder -ID",
+          "description": "Die ID der vorzuziehenden Aufgabe. Der Name funktioniert ebenfalls. Das Panel zeigt die ID."
+        },
+        "origin": {
+          "name": "Ursprung",
+          "description": "Optionale Freiform-Markierung, die im Ereignis home_keeper_task_pulled_forward zurückgegeben wird, damit eine beitragende Integration das von ihr ausgelöste Vorziehen erkennen und ignorieren kann (Schleifenvermeidung). Home Keeper wertet sie nicht aus."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Aufgabe mit Verbrauchsmaterial verknüpfen",
       "description": "Verknüpft eine Aufgabe mit einem Verbrauchsmaterial/Teil eines Geräts, sodass beim Abschließen ein Ersatzteil aus dem Bestand verbraucht wird und beim Nachbestellschwellenwert ein Ereignis bei niedrigem Bestand ausgelöst wird. Lasse asset_id und part_id weg, um die Verknüpfung zu entfernen.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Inventar exportieren",
       "description": "Gibt ein Hausinventar für Versicherungszwecke als Antwort zurück (eine Zeile pro Gerät plus Summen), mit einer speicherfertigen CSV-Datei unter dem Schlüssel \"csv\"."
+    },
+    "export_data": {
+      "name": "Daten exportieren",
+      "description": "Gibt jede Aufgabe und jedes Gerät als ein übertragbares Dokument zurück, dazu dasselbe Dokument als speicherfertige YAML-Datei unter dem Schlüssel \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Einschließen",
+          "description": "Welche Abschnitte exportiert werden. Standardmäßig beide."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Daten importieren",
+      "description": "Liest ein übertragbares Dokument und legt die darin enthaltenen Aufgaben und Geräte an oder aktualisiert sie. Das gesamte Dokument wird zuerst geprüft, ein fehlerhaftes Dokument schreibt also nichts.",
+      "fields": {
+        "document": {
+          "name": "Dokument",
+          "description": "Das zu lesende Dokument, in der Form, die export_data zurückgibt. Übergeben Sie es als Zuordnung oder als ganze Datei in einer Zeichenkette."
+        },
+        "dry_run": {
+          "name": "Nur Vorschau",
+          "description": "Prüft das Dokument und meldet, was sich ändern würde, ohne etwas zu schreiben."
+        },
+        "match": {
+          "name": "Zuordnung",
+          "description": "Wie der gemeinte Datensatz gefunden wird. \"auto\" sucht über die ID, dann external_id, dann den Namen. \"none\" legt jeden Datensatz neu an."
+        }
+      }
     },
     "set_options": {
       "name": "Optionen festlegen",

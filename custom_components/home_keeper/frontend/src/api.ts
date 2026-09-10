@@ -7,11 +7,13 @@ import type {
   DeclarativeCompanionPreviewResult,
   Hass,
   HassLabel,
+  ImportReport,
   HomeKeeperOptions,
   Inventory,
   NotifyRun,
   NotifyRunOptions,
   Part,
+  PortableDocument,
   Profile,
   Task,
 } from './types';
@@ -322,6 +324,20 @@ export async function skipTask(hass: Hass, taskId: string, metadata?: SkipMetada
   const clean = metadataMsg(metadata);
   if (Object.keys(clean).length) msg.metadata = clean;
   const res = await hass.callWS<{ task: Task }>(msg);
+  return res.task;
+}
+
+/**
+ * Move a task's due date to now, independent of its periodic schedule.
+ *
+ * The mirror of `snoozeTask`: no dialog, no metadata — a single tap says "today,
+ * not on its usual date." Like a snooze, this is never a completion.
+ */
+export async function pullForwardTask(hass: Hass, taskId: string): Promise<Task> {
+  const res = await hass.callWS<{ task: Task }>({
+    type: 'home_keeper/pull_forward_task',
+    task_id: taskId,
+  });
   return res.task;
 }
 
@@ -729,6 +745,37 @@ export async function signPartFileUrl(
     part_id: partId,
   });
   return res.url;
+}
+
+/** Fetch the portable document plus a ready-to-save YAML file. */
+export async function exportData(
+  hass: Hass,
+): Promise<{ document: PortableDocument; yaml: string }> {
+  return hass.callWS<{ document: PortableDocument; yaml: string }>({
+    type: 'home_keeper/export_data',
+  });
+}
+
+/**
+ * Plan an import and, unless `dryRun`, apply it.
+ *
+ * The preview and the real import are the same call with one flag flipped, so what
+ * the preview shows is what the import does. A second code path for the preview
+ * could only ever be a second thing to keep in step with this one.
+ */
+export async function importData(
+  hass: Hass,
+  // A parsed document, or the whole file as text. The panel sends text and lets the
+  // backend read it, so the browser carries no YAML parser of its own.
+  document: PortableDocument | string,
+  opts: { dryRun?: boolean; match?: 'auto' | 'none' } = {},
+): Promise<ImportReport> {
+  return hass.callWS<ImportReport>({
+    type: 'home_keeper/import_data',
+    document,
+    dry_run: !!opts.dryRun,
+    match: opts.match ?? 'auto',
+  });
 }
 
 /** Fetch the home-inventory report (for insurance) plus a ready-to-save CSV. */

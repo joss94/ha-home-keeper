@@ -221,17 +221,20 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
   await expect(panel.locator('ha-dialog[open]')).toHaveCount(0);
   await page.waitForTimeout(BEAT);
 
-  // 2a1. Snooze and skip, the two answers to a due task that are not "done". They
-  //      hang off a caret beside Done rather than sitting next to it, so the tour
-  //      opens the menu, lingers on the line each entry carries, then shows the
-  //      snooze dialog resolving its preset to a real date. Escape out of both so
-  //      the seeded schedule is left where the later beats expect it.
+  // 2a1. Snooze, skip and pull forward, the answers to a due task that are not
+  //      "done". They hang off a caret beside Done rather than sitting next to it,
+  //      so the tour opens the menu, lingers on the line each entry carries — pull
+  //      forward has no dialog of its own to show, unlike snooze below, so the menu
+  //      is where it's demonstrated — then shows the snooze dialog resolving its
+  //      preset to a real date. Escape out of both so the seeded schedule is left
+  //      where the later beats expect it.
   //      Every locator here is scoped to the detail actions: the list beside the
   //      detail renders its own split buttons, so an unscoped `.hk-defer-snooze`
   //      finds one of their closed menus instead of the open one.
   const detailActions = panel.locator('.hk-detail-actions');
   await detailActions.locator('.hk-split-caret').click();
   await expect(detailActions.locator('.hk-defer-menu .hk-defer-skip')).toBeVisible();
+  await expect(detailActions.locator('.hk-defer-menu .hk-defer-pull-forward')).toBeVisible();
   await page.waitForTimeout(BEAT * 2);
   await detailActions.locator('.hk-defer-snooze').click();
   await expect(panel.locator('ha-dialog[open] .hk-snooze-hint')).toBeVisible();
@@ -875,6 +878,23 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
     await page.waitForTimeout(BEAT * 2);
   }
 
+  // 7a. Import and export — the last stop on the rail. A document goes into the box
+  //     and Preview answers before anything is written: what it would add, how much
+  //     history rides along, and anything wrong with the file.
+  await panel.locator('.hk-rail-link[data-section="transfer"]').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await panel.locator('#hk-transfer').scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  await page.waitForTimeout(BEAT * 3);
+
   // 7b. Notifications, opened rather than passed. How a notification lands on the
   //     phone is set here — the channel it arrives on and how loudly — and Test
   //     sends it now, so the answer comes back on the phone instead of at the next
@@ -910,12 +930,13 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
   await openDashboard(page);
   await page.waitForTimeout(BEAT * 2);
 
-  // 8a. Snooze and skip reach the dashboard too, and here they are simply on the
-  //     row: a caret beside a same-sized icon button had nothing to lean on. Open
-  //     the snooze dialog so the tour shows the preset resolving to a real date,
-  //     then Escape out so the closing shot frames the cards.
+  // 8a. Snooze, skip and pull forward reach the dashboard too, and here they are
+  //     simply on the row: a caret beside a same-sized icon button had nothing to
+  //     lean on. Open the snooze dialog so the tour shows the preset resolving to a
+  //     real date, then Escape out so the closing shot frames the cards.
   const hkCard = page.locator('home-keeper-card').first();
   await expect(hkCard.locator('.hk-defer-snooze').first()).toBeVisible({ timeout: 40_000 });
+  await expect(hkCard.locator('.hk-defer-pull-forward').first()).toBeVisible();
   await page.waitForTimeout(BEAT);
   await hkCard.locator('.hk-defer-snooze').first().click();
   await expect(page.locator('ha-dialog[open] .hk-snooze-hint').first()).toBeVisible();
@@ -1011,6 +1032,20 @@ async function phoneTour(page: Page, panel: Locator): Promise<void> {
   await panel.locator('#settings-back').click();
   await expect(panel.locator('.hk-index-row').first()).toBeVisible();
   await page.waitForTimeout(BEAT * 2);
+
+  //    Then Import and export: a document pasted in, and the preview that says what
+  //    importing it would change before anything is written.
+  await panel.locator('.hk-index-row[data-section="transfer"]').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  await page.waitForTimeout(BEAT * 3);
 }
 
 const TOURS: Tour[] = [

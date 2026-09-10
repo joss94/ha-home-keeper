@@ -514,6 +514,41 @@ def test_build_task_rejects_non_mapping_managed_by():
         )
 
 
+@pytest.mark.parametrize("bad", ["part", 5, ["part"], True])
+def test_build_task_rejects_a_source_that_is_not_a_mapping(bad):
+    # `source` is opaque, but its *shape* is not: every reconciler reads it as
+    # {namespace: payload}, and `store.async_repoint_device_ids` walks
+    # `source.values()` outright. A string passes each isinstance guard by being
+    # skipped, then breaks that walk long after the write that stored it. The
+    # service schemas have always typed this `dict`; this is the same rule for the
+    # paths that do not go through voluptuous.
+    with raises_exactly(m.TaskValidationError, "source must be a mapping"):
+        m.build_task(
+            {
+                "name": "X",
+                "recurrence_type": "floating",
+                "interval": 1,
+                "unit": "days",
+                "source": bad,
+            },
+            now=NOW,
+        )
+
+
+def test_build_task_keeps_a_mapping_source():
+    task = m.build_task(
+        {
+            "name": "X",
+            "recurrence_type": "floating",
+            "interval": 1,
+            "unit": "days",
+            "source": {"acme": {"ref": "7"}},
+        },
+        now=NOW,
+    )
+    assert task["source"] == {"acme": {"ref": "7"}}
+
+
 def test_build_task_allows_managed_without_protection_and_no_config_entry_id():
     # A managed task that doesn't request deletion protection needs no config_entry_id.
     task = m.build_task(
@@ -1787,3 +1822,167 @@ def test_inference_does_not_reach_updates():
     assert updated["recurrence_type"] == "floating"
     assert updated["interval"] == 3
     assert updated["unit"] == "months"
+
+
+def test_external_id_is_stored_and_stripped():
+    task = m.build_task(
+        {"name": "Furnace filter", "external_id": "  centriq-4711  "}, now=NOW
+    )
+    assert task["external_id"] == "centriq-4711"
+
+
+def test_external_id_defaults_to_empty_when_absent():
+    # "" means "no key" and must never match another keyless record on import.
+    task = m.build_task({"name": "Furnace filter"}, now=NOW)
+    assert task["external_id"] == ""
+
+
+def test_external_id_survives_an_update_that_omits_it():
+    # The import path updates a matched task without restating its key. Clearing it
+    # here would stop the *next* re-import matching the record it just wrote.
+    task = m.build_task({"name": "Furnace filter", "external_id": "furnace"}, now=NOW)
+    updated = m.merge_update(task, {"name": "Renamed"}, now=NOW)
+    assert updated["external_id"] == "furnace"
+
+
+def test_external_id_is_cleared_when_explicitly_emptied():
+    task = m.build_task({"name": "Furnace filter", "external_id": "furnace"}, now=NOW)
+    updated = m.merge_update(task, {"external_id": ""}, now=NOW)
+    assert updated["external_id"] == ""
+
+
+def test_external_id_over_the_cap_is_rejected():
+    with raises_exactly(
+        m.TaskValidationError, "external_id must be at most 128 characters"
+    ):
+        m.build_task({"name": "Furnace filter", "external_id": "x" * 129}, now=NOW)
+
+
+# ── merge_update carries every field it was not asked to change ─────────────
+#
+# `merge_update` rebuilds its candidate field by field, so a field left out of the
+# candidate is a field that silently reverts to its default on the next unrelated
+# edit — a rename wiping a schedule, a note wiping a season. Walking every field
+# is what makes that impossible to introduce quietly.
+
+_FULL = {
+    "name": "Furnace filter",
+    "notes": "MERV 13 only.",
+    "recurrence_type": "floating",
+    "interval": 3,
+    "unit": "months",
+    "device_id": "dev_furnace",
+    "area_id": "area_base",
+    "enabled": True,
+    "external_id": "furnace-filter",
+    "labels": ["label_hvac"],
+    "card_links": [{"asset_id": "a1", "entry_id": "e1"}],
+    "task_chips": [{"label": "HVAC"}],
+    "tag_id": "tag_furnace",
+    "completion_detail": "optional",
+    "active_season": [{"start": "10-01", "end": "04-30"}],
+}
+
+
+@pytest.mark.parametrize("field", sorted(_FULL))
+def test_a_rename_carries_every_other_field_through(field):
+    task = m.build_task(dict(_FULL), now=NOW)
+    renamed = m.merge_update(task, {"name": "Renamed"}, now=NOW)
+    if field == "name":
+        assert renamed["name"] == "Renamed"
+    else:
+        assert renamed[field] == task[field], field
+
+
+def test_an_edit_changes_the_field_it_names():
+    task = m.build_task(dict(_FULL), now=NOW)
+    assert m.merge_update(task, {"notes": "New note"}, now=NOW)["notes"] == "New note"
+    assert m.merge_update(task, {"enabled": False}, now=NOW)["enabled"] is False
+    assert m.merge_update(task, {"interval": 6}, now=NOW)["interval"] == 6
+    assert m.merge_update(task, {"unit": "weeks"}, now=NOW)["unit"] == "weeks"
+    assert (
+        m.merge_update(task, {"device_id": "dev_other"}, now=NOW)["device_id"]
+        == "dev_other"
+    )
+    assert m.merge_update(task, {"area_id": "area_x"}, now=NOW)["area_id"] == "area_x"
+    assert (
+        m.merge_update(task, {"completion_detail": "required"}, now=NOW)[
+            "completion_detail"
+        ]
+        == "required"
+    )
+
+
+def test_an_edit_can_clear_the_fields_that_are_clearable():
+    task = m.build_task(dict(_FULL), now=NOW)
+    assert m.merge_update(task, {"notes": ""}, now=NOW)["notes"] == ""
+    assert m.merge_update(task, {"device_id": None}, now=NOW)["device_id"] is None
+    assert m.merge_update(task, {"area_id": None}, now=NOW)["area_id"] is None
+    assert m.merge_update(task, {"labels": []}, now=NOW)["labels"] == []
+    assert m.merge_update(task, {"card_links": []}, now=NOW)["card_links"] == []
+    assert m.merge_update(task, {"task_chips": []}, now=NOW)["task_chips"] == []
+    assert m.merge_update(task, {"tag_id": None}, now=NOW)["tag_id"] is None
+    assert (
+        m.merge_update(task, {"active_season": None}, now=NOW)["active_season"] is None
+    )
+
+
+def test_a_rename_keeps_the_history_and_the_identity():
+    task = m.build_task(dict(_FULL), now=NOW)
+    task["completions"] = [{"ts": "2026-01-01T00:00:00-04:00"}]
+    task["last_completed"] = "2026-01-01T00:00:00-04:00"
+    renamed = m.merge_update(task, {"name": "Renamed"}, now=NOW)
+    assert renamed["id"] == task["id"]
+    assert renamed["created"] == task["created"]
+    assert renamed["completions"] == task["completions"]
+    assert renamed["last_completed"] == task["last_completed"]
+
+
+def test_a_rename_leaves_a_floating_schedule_where_it_was():
+    task = m.build_task(dict(_FULL), now=NOW)
+    assert (
+        m.merge_update(task, {"name": "Renamed"}, now=NOW)["next_due"]
+        == task["next_due"]
+    )
+
+
+def test_a_fixed_task_keeps_its_freq_and_anchor_across_a_rename():
+    task = m.build_task(
+        {
+            "name": "Fixed",
+            "recurrence_type": "fixed",
+            "interval": 1,
+            "freq": "MONTHLY",
+            "anchor": "2026-01-15T09:00:00-04:00",
+        },
+        now=NOW,
+    )
+    renamed = m.merge_update(task, {"name": "Renamed"}, now=NOW)
+    assert renamed["freq"] == "MONTHLY"
+    assert renamed["anchor"] == task["anchor"]
+
+
+def test_a_one_off_keeps_its_due_date_across_a_rename():
+    task = m.build_task(
+        {
+            "name": "Once",
+            "recurrence_type": "one-off",
+            "due": "2026-08-01T09:00:00-04:00",
+        },
+        now=NOW,
+    )
+    assert m.merge_update(task, {"name": "Renamed"}, now=NOW)["due"] == task["due"]
+
+
+def test_a_sensor_task_keeps_its_binding_across_a_rename():
+    task = m.build_task(
+        {
+            "name": "Meter",
+            "recurrence_type": "sensor",
+            "sensor": {"entity_id": "sensor.hours", "mode": "usage", "target": 100},
+        },
+        now=NOW,
+    )
+    assert (
+        m.merge_update(task, {"name": "Renamed"}, now=NOW)["sensor"] == task["sensor"]
+    )

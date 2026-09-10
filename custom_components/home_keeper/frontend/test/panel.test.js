@@ -1257,8 +1257,12 @@ describe('Task detail — snooze and skip behind the Done caret (issue #268)', (
     expect(caret.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('shows no caret when both switches are off', async () => {
-    const { hass } = withOptions([dueTask], { allow_snooze: false, allow_skip: false });
+  it('shows no caret when every switch is off', async () => {
+    const { hass } = withOptions([dueTask], {
+      allow_snooze: false,
+      allow_skip: false,
+      allow_pull_forward: false,
+    });
     const panel = await mountPanel(hass, '/tasks/t1');
 
     await waitFor(() => panel.shadowRoot?.querySelector('.hk-detail-actions'));
@@ -1269,13 +1273,14 @@ describe('Task detail — snooze and skip behind the Done caret (issue #268)', (
 
   it('treats a missing option as on, so an existing install is unaffected', async () => {
     // Every stored options document predates these keys; `!!v` would read that as
-    // "off" and silently withdraw both verbs from everyone.
+    // "off" and silently withdraw every verb from everyone.
     const { hass } = withOptions([dueTask], { sync_problem_sensors: false });
     const panel = await mountPanel(hass, '/tasks/t1');
 
     const menu = await openMenu(panel);
     expect(menu.querySelector('.hk-defer-snooze')).toBeTruthy();
     expect(menu.querySelector('.hk-defer-skip')).toBeTruthy();
+    expect(menu.querySelector('.hk-defer-pull-forward')).toBeTruthy();
   });
 
   it('opens the snooze dialog from the menu', async () => {

@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Anticipa attività",
+      "description": "Anticipa a oggi la data di scadenza di un'attività, indipendentemente dalla sua pianificazione periodica, senza registrare un completamento né modificare la ricorrenza.",
+      "fields": {
+        "task_id": {
+          "name": "Nome o ID attività",
+          "description": "L'id dell'attività da anticipare. Funziona anche il suo nome. Il pannello mostra l'id."
+        },
+        "origin": {
+          "name": "Origine",
+          "description": "Marcatore facoltativo in formato libero restituito nell'evento home_keeper_task_pulled_forward, così che un'integrazione contribuente possa riconoscere e ignorare l'anticipo che ha attivato (prevenzione dei cicli). Home Keeper non lo interpreta."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Collega l'attività a un consumabile",
       "description": "Collega un'attività a un consumabile/componente di un elettrodomestico così che completandola si consumi un ricambio dalle scorte e si attivi un evento di scorte basse alla soglia di riordino. Ometti asset_id e part_id per rimuovere il collegamento.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Esporta inventario",
       "description": "Restituisce un inventario domestico per l'assicurazione come risposta (una riga per elettrodomestico più i totali), con un CSV pronto da salvare sotto la chiave «csv»."
+    },
+    "export_data": {
+      "name": "Esporta i dati",
+      "description": "Restituisce ogni attività e ogni elettrodomestico in un documento trasferibile, insieme allo stesso documento come file YAML pronto da salvare, sotto la chiave \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Includi",
+          "description": "Quali sezioni esportare. Entrambe per impostazione predefinita."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importa i dati",
+      "description": "Legge un documento trasferibile e crea o aggiorna le attività e gli elettrodomestici che contiene. Prima viene controllato l'intero documento, quindi un documento con un errore non scrive nulla.",
+      "fields": {
+        "document": {
+          "name": "Documento",
+          "description": "Il documento da leggere, nella forma restituita da export_data. Indicatelo come mappatura o come intero file in una stringa."
+        },
+        "dry_run": {
+          "name": "Solo anteprima",
+          "description": "Controlla il documento e riferisce che cosa cambierebbe, senza scrivere nulla."
+        },
+        "match": {
+          "name": "Corrispondenza",
+          "description": "Come si trova il record a cui si riferisce. \"auto\" cerca per id, poi external_id, poi il nome. \"none\" crea ogni record."
+        }
+      }
     },
     "set_options": {
       "name": "Imposta opzioni",

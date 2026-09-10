@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Fremryk opgave",
+      "description": "Flytter en opgaves forfaldsdato til nu, uafhængigt af den periodiske plan, uden at registrere en fuldførelse eller ændre gentagelsen.",
+      "fields": {
+        "task_id": {
+          "name": "Opgavenavn eller -ID",
+          "description": "Id'et på den opgave, der skal fremrykkes. Navnet virker også. Panelet viser id'et."
+        },
+        "origin": {
+          "name": "Oprindelse",
+          "description": "Valgfri fritekstmarkør, der gengives i home_keeper_task_pulled_forward-hændelsen, så en bidragende integration kan genkende og ignorere den fremrykning, den udløste (sløjfeforebyggelse). Home Keeper fortolker den ikke."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Knyt opgave til en forbrugsvare",
       "description": "Knytter en opgave til en forbrugsvare/del på et apparat, så fuldførelse forbruger én reservedel fra lageret og udløser en hændelse om lavt lager ved genbestillingsgrænsen. Udelad asset_id og part_id for at fjerne tilknytningen.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Eksportér inventar",
       "description": "Returnér et hjemmeinventar til forsikring som et svar (én række pr. apparat plus totaler) med en klar-til-at-gemme CSV under nøglen \"csv\"."
+    },
+    "export_data": {
+      "name": "Eksportér data",
+      "description": "Giver hver opgave og hvert apparat som ét flytbart dokument samt det samme dokument som en færdig YAML-fil under nøglen \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Tag med",
+          "description": "Hvilke dele der eksporteres. Begge som standard."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importér data",
+      "description": "Læser et flytbart dokument og opretter eller opdaterer opgaverne og apparaterne i det. Hele dokumentet kontrolleres først, så et dokument med en fejl skriver ingenting.",
+      "fields": {
+        "document": {
+          "name": "Dokument",
+          "description": "Dokumentet der læses, i den form export_data giver. Angiv det som et opslag eller som hele filen i én streng."
+        },
+        "dry_run": {
+          "name": "Kun forhåndsvisning",
+          "description": "Kontrollerer dokumentet og melder, hvad der ville blive ændret, uden at skrive noget."
+        },
+        "match": {
+          "name": "Sammenkobling",
+          "description": "Hvordan den post, der menes, findes. \"auto\" søger på id, derefter external_id, derefter navnet. \"none\" opretter hver post."
+        }
+      }
     },
     "set_options": {
       "name": "Angiv indstillinger",

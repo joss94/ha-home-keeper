@@ -71,6 +71,24 @@ export function closeSkip(p: PanelHost): void {
   p._render();
 }
 
+/**
+ * Pull a task's due date to today, independent of its periodic schedule.
+ *
+ * No dialog, unlike Snooze (duration) and Skip (note/who/reading) — there is
+ * nothing to ask, so a tap acts immediately. Not a completion: last_completed and
+ * the recurrence are untouched.
+ */
+export async function pullForwardTask(p: PanelHost, task: Task): Promise<void> {
+  if (!p._hass) return;
+  try {
+    await api.pullForwardTask(p._hass, task.id);
+    await p._refresh();
+  } catch (err) {
+    console.error('home-keeper: pull forward failed', err);
+    toast(p, t('error.actionFailed'));
+  }
+}
+
 /** Re-date a logged skip. Same dialog as a completion's — see the state's `kind`. */
 export function openMoveSkip(p: PanelHost, task: Task, ts: string): void {
   p._moveCompletion = { open: true, task, ts, newTs: ts, kind: 'skip' };

@@ -31,7 +31,9 @@ test('capture Home Keeper card screenshots', async ({ page }) => {
   // Tall viewport so even the second (grouped) card sits above the fold and its
   // clip stays inside the rendered image. The default card carries the water-filter
   // task whose appliance link-chips wrap over several rows, so give it ample room.
-  await page.setViewportSize({ width: 1280, height: 2600 });
+  // Pull forward added a fourth per-row action button, pushing rows (and so the
+  // grouped card below) taller than the previous 2600 fit.
+  await page.setViewportSize({ width: 1280, height: 3400 });
   const card = await openCardDashboard(page);
   await expect(card.locator('.hk-name').first()).toBeVisible();
 
@@ -70,10 +72,12 @@ test('capture Home Keeper card screenshots', async ({ page }) => {
   await expect(card.locator('a.hk-link-chip').first()).toBeVisible();
   await shotCard(page, card, `${OUT}/card-task-links.png`);
 
-  // 2c. Snooze and skip, on the row (#268). Both sit ahead of Done as their own
-  // buttons, so the default card clip already shows them — this shot names the
-  // feature, and the dialog they open gets its own below.
+  // 2c. Snooze, skip and pull forward, on the row (#268, then pull forward
+  // alongside them). All 3 sit ahead of Done as their own buttons, so the default
+  // card clip already shows them — this shot names the feature, and the dialogs
+  // snooze/skip open get their own below (pull forward acts immediately, no dialog).
   await expect(card.locator('.hk-defer-snooze').first()).toBeVisible();
+  await expect(card.locator('.hk-defer-pull-forward').first()).toBeVisible();
   await shotCard(page, card, `${OUT}/card-skip-snooze-row.png`);
 
   // 3. The grouped-by-status card.

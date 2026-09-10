@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Antecipar tarefa",
+      "description": "Antecipa para hoje a data de vencimento de uma tarefa, independentemente de sua recorrência periódica, sem registrar uma conclusão ou alterar a recorrência.",
+      "fields": {
+        "task_id": {
+          "name": "Nome ou ID da tarefa",
+          "description": "O id da tarefa a antecipar. O nome também funciona. O painel mostra o id."
+        },
+        "origin": {
+          "name": "Origem",
+          "description": "Marcador opcional de formato livre repassado no evento home_keeper_task_pulled_forward, para que uma integração contribuinte possa reconhecer e ignorar a antecipação que ela acionou (prevenção de laço). O Home Keeper não o interpreta."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Vincular tarefa a um consumível",
       "description": "Vincula uma tarefa a um consumível/peça de um aparelho para que concluí-la consuma uma reserva do estoque e dispare um evento de estoque baixo no limite de reposição. Omita asset_id e part_id para remover o vínculo.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Exportar inventário",
       "description": "Retorna um inventário doméstico para seguro como resposta (uma linha por eletrodoméstico mais os totais), com um CSV pronto para salvar na chave \"csv\"."
+    },
+    "export_data": {
+      "name": "Exportar dados",
+      "description": "Devolve cada tarefa e cada eletrodoméstico em um documento portátil, junto com esse mesmo documento como arquivo YAML pronto para salvar, sob a chave \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Incluir",
+          "description": "Quais seções exportar. As duas por padrão."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importar dados",
+      "description": "Lê um documento portátil e cria ou atualiza as tarefas e os eletrodomésticos nele. O documento inteiro é conferido primeiro, então um documento com erro não grava nada.",
+      "fields": {
+        "document": {
+          "name": "Documento",
+          "description": "O documento a ler, no formato que export_data devolve. Informe como mapeamento ou como o arquivo inteiro em uma cadeia."
+        },
+        "dry_run": {
+          "name": "Apenas prévia",
+          "description": "Confere o documento e informa o que mudaria, sem gravar nada."
+        },
+        "match": {
+          "name": "Correspondência",
+          "description": "Como achar o registro a que se refere. \"auto\" busca por id, depois external_id, depois o nome. \"none\" cria cada registro."
+        }
+      }
     },
     "set_options": {
       "name": "Definir opções",

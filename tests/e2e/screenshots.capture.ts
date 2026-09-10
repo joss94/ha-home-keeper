@@ -217,12 +217,13 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await expect(panel.locator('.d-note-edit')).toBeVisible();
   await openTaskTab(panel, 'schedule');
 
-  // 1b1a. The Done caret, open. Snooze and Skip are the two other answers to a due
-  // task, and neither was reachable from the panel before (#268) — they shipped as
-  // services and notification buttons only. Each carries a line saying what it does
-  // to the schedule, because the verbs alone did not say.
+  // 1b1a. The Done caret, open. Snooze, Skip and Pull forward are the other answers
+  // to a due task, and none was reachable from the panel before Snooze/Skip shipped
+  // (#268) — they started as services and notification buttons only. Each carries a
+  // line saying what it does to the schedule, because the verbs alone did not say.
   await panel.locator('.hk-detail-actions .hk-split-caret').click();
   await expect(panel.locator('.hk-defer-menu .hk-defer-skip')).toBeVisible();
+  await expect(panel.locator('.hk-defer-menu .hk-defer-pull-forward')).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/51-panel-skip-snooze-menu.png`, fullPage: true });
 
@@ -1323,6 +1324,14 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
     .locator('#hk-settings-shopping')
     .screenshot({ path: `${OUT}/45-panel-settings-shopping.png` });
 
+  // 17t. The Skip, snooze & pull forward card on its own — now 3 switches, Pull
+  // forward being the newest.
+  await panel.locator('#hk-settings-skipsnooze').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await panel
+    .locator('#hk-settings-skipsnooze')
+    .screenshot({ path: `${OUT}/45c-panel-settings-skipsnooze.png` });
+
   // 17a. Settings → Profiles + Notifications. A Profile is a standalone saved filter;
   // a Notification is a delivery binding that references one. Seed one of each via the
   // public set_options service so both editors render populated. "Upstairs" carries an
@@ -1515,6 +1524,48 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${OUT}/21-panel-companions.png`, fullPage: true });
 
+  // 60. Settings → Import and export — the whole surface at once: the Export button
+  // that saves everything to one file, the box a document is pasted into, and a
+  // preview of what importing it would change. The preview is the shot's point: it
+  // is what stands between a generated file and the store, so it has to show its
+  // verdict and its counts rather than an empty box.
+  await openPanel(page);
+  await panel.locator('#tab-settings').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\nappliances:\n  - external_id: dishwasher\n    name: Kitchen dishwasher\n    manufacturer: Bosch\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    appliance: dishwasher\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  await page.waitForTimeout(700);
+  // The card alone, not the whole Settings page: it sits last, so a full-page shot
+  // renders it a thumbnail at the bottom of eight others.
+  await panel.locator('#hk-transfer').scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+  await panel.locator('#hk-transfer').screenshot({ path: `${OUT}/60-panel-transfer.png` });
+
+  // 60c. The refusal for a document too large to import from the panel. Worth its own
+  // shot because it is the one refusal the browser decides by itself: Home Assistant
+  // closes the connection on a frame past its websocket limit rather than answering,
+  // so before this check the card could only say "something went wrong" and pressing
+  // the button again dropped the connection again. The message has to name the size
+  // and the way in that still works.
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - name: Ten years of boiler service\n    interval: 1\n    unit: months\n    notes: "${'y'.repeat(5 * 1024 * 1024)}"\n`);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('#hk-transfer ha-alert[alert-type="error"]')).toBeVisible();
+  await page.waitForTimeout(400);
+  await panel.locator('#hk-transfer').scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+  await panel
+    .locator('#hk-transfer')
+    .screenshot({ path: `${OUT}/60c-panel-transfer-too-large.png` });
+
   // 17c. Settings → Profiles → "My chores" → its **Sync to a to-do list** group: the
   // to-do list this profile's tasks are synced onto ("Family chores", the seeded
   // local_todo list standing in for a Todoist project), plus what a change over there
@@ -1657,6 +1708,15 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/51-panel-mobile-settings-section.png` });
 
+  // 45d. The Skip, snooze & pull forward section on its own index page — same 3
+  // switches as the desktop card, one screen at a time like every other section here.
+  await panel.locator('#settings-back').click();
+  await expect(panel.locator('.hk-index-row').first()).toBeVisible();
+  await panel.locator('.hk-index-row[data-section="skipsnooze"]').click();
+  await expect(panel.locator('#hk-settings-skipsnooze')).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${OUT}/45d-panel-mobile-settings-skipsnooze.png` });
+
   // 22b. One notification open on a phone. This is where the pair that #313 confused
   // has to read: the line under the profile picker naming what that profile sends, and
   // the Triggers group saying that a trigger sets the moment rather than the contents.
@@ -1683,6 +1743,45 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await triggerGroup.scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/22c-panel-mobile-notify-triggers.png` });
+
+  // 60b. Import and export on a phone. Below 700px the section opens on its own with
+  // the back bar, and the two action rows wrap so each button keeps a full tap
+  // target rather than being squeezed onto one line beside its neighbour.
+  await panel.locator('#settings-back').click();
+  await expect(panel.locator('.hk-index-row').first()).toBeVisible();
+  await panel.locator('.hk-index-row[data-section="transfer"]').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\nappliances:\n  - external_id: dishwasher\n    name: Kitchen dishwasher\n    manufacturer: Bosch\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    appliance: dishwasher\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  // Wheel the actions into frame rather than `scrollIntoViewIfNeeded`, which does
+  // nothing here: the panel sits inside Home Assistant's own scroller, so the
+  // element is "in view" of a container that is itself scrolled to the top. The two
+  // buttons taking a row of their own is the phone-specific half of this card, and
+  // a shot that cuts them off documents none of it.
+  await page.mouse.move(200, 500);
+  await page.mouse.wheel(0, 300);
+  await expect(panel.locator('#transfer-import')).toBeInViewport();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${OUT}/60b-panel-mobile-transfer.png` });
+
+  // 60d. The same refusal on a phone. The message is two sentences and names an
+  // action id, so this is where it either wraps inside the card or pushes the layout
+  // sideways — which the desktop shot cannot show.
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - name: Ten years of boiler service\n    interval: 1\n    unit: months\n    notes: "${'y'.repeat(5 * 1024 * 1024)}"\n`);
+  await panel.locator('#transfer-preview').click();
+  const tooLarge = panel.locator('#hk-transfer ha-alert[alert-type="error"]');
+  await expect(tooLarge).toBeVisible();
+  await tooLarge.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${OUT}/60d-panel-mobile-transfer-too-large.png` });
 
   await page.setViewportSize(DESKTOP);
 });

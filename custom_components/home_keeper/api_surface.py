@@ -175,6 +175,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec("set_task_meter"),
     ServiceSpec("snooze_task"),
     ServiceSpec("skip_task"),
+    ServiceSpec("pull_forward_task"),
     ServiceSpec("update_skip"),
     ServiceSpec("delete_skip"),
     ServiceSpec("move_skip"),
@@ -196,6 +197,8 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec("sign_document_url", response="only"),
     ServiceSpec("sign_part_file_url", response="only"),
     ServiceSpec("export_inventory", admin_only=True, response="only"),
+    ServiceSpec("export_data", admin_only=True, response="only"),
+    ServiceSpec("import_data", admin_only=True, response="only"),
     ServiceSpec("set_options", admin_only=True),
     ServiceSpec("register_companion", response="optional"),
     ServiceSpec("list_companions", response="only"),
@@ -443,6 +446,15 @@ EVENTS: tuple[EventSpec, ...] = (
         ),
     ),
     EventSpec(
+        const.EVENT_TASK_PULLED_FORWARD,
+        "EVENT_TASK_PULLED_FORWARD",
+        "fired",
+        "task",
+        "a task's due date is moved to now without recording a completion; only "
+        "next_due moves, the recurrence is untouched — the mirror of a snooze",
+        extra=(Field("origin", "str | None", "the marker the caller passed"),),
+    ),
+    EventSpec(
         const.EVENT_TASK_SKIP_UPDATED,
         "EVENT_TASK_SKIP_UPDATED",
         "fired",
@@ -684,6 +696,7 @@ WEBSOCKET_COMMANDS: tuple[WebsocketSpec, ...] = (
     WebsocketSpec("home_keeper/delete_completion", service="delete_completion"),
     WebsocketSpec("home_keeper/snooze_task", service="snooze_task"),
     WebsocketSpec("home_keeper/skip_task", service="skip_task"),
+    WebsocketSpec("home_keeper/pull_forward_task", service="pull_forward_task"),
     WebsocketSpec("home_keeper/update_skip", service="update_skip"),
     WebsocketSpec("home_keeper/move_skip", service="move_skip"),
     WebsocketSpec("home_keeper/delete_skip", service="delete_skip"),
@@ -724,6 +737,8 @@ WEBSOCKET_COMMANDS: tuple[WebsocketSpec, ...] = (
     WebsocketSpec(
         "home_keeper/export_inventory", admin_only=True, service="export_inventory"
     ),
+    WebsocketSpec("home_keeper/export_data", admin_only=True, service="export_data"),
+    WebsocketSpec("home_keeper/import_data", admin_only=True, service="import_data"),
     WebsocketSpec("home_keeper/get_options"),
     WebsocketSpec("home_keeper/set_options", admin_only=True, service="set_options"),
     WebsocketSpec("home_keeper/get_companions", service="list_companions"),
@@ -783,6 +798,7 @@ OPTIONS: tuple[OptionSpec, ...] = (
     OptionSpec(const.OPTION_SYNC_PROBLEM_SENSORS, in_flow=True),
     OptionSpec(const.OPTION_ALLOW_SNOOZE, in_flow=False),
     OptionSpec(const.OPTION_ALLOW_SKIP, in_flow=False),
+    OptionSpec(const.OPTION_ALLOW_PULL_FORWARD, in_flow=False),
     OptionSpec(const.OPTION_ONE_OFF_RETENTION_DAYS, in_flow=True),
     OptionSpec(const.OPTION_SHOPPING_LIST_ENTITY, in_flow=True),
     OptionSpec(const.OPTION_PROFILES, in_flow=False),
@@ -881,6 +897,13 @@ SURFACE_KINDS: tuple[SurfaceKind, ...] = (
         "published",
         "The dashboard task card registers itself as a Lovelace resource on "
         "storage-mode installs.",
+    ),
+    SurfaceKind(
+        "Data portability",
+        "published",
+        "Tasks and appliances move as one YAML document with a published JSON "
+        "Schema, which `export_data` writes and `import_data` reads, upserting on "
+        "a stated primary key.",
     ),
     SurfaceKind(
         "WebSocket commands",

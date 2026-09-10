@@ -47,6 +47,7 @@ from . import (
     profiles,
     sensor_tasks,
     tag_listener,
+    transfer,
     websocket_api,
 )
 from .api_surface import SERVICE_NAMES
@@ -54,6 +55,7 @@ from .assets import AssetValidationError, card_projection
 from .const import (
     COMPLETION_ENTRY_FIELDS,
     DOMAIN,
+    OPTION_ALLOW_PULL_FORWARD,
     OPTION_ALLOW_SKIP,
     OPTION_ALLOW_SNOOZE,
     OPTION_DISMISSED_COMPANIONS,
@@ -69,6 +71,7 @@ from .const import (
     PLATFORMS,
     SENSOR_MODE_USAGE,
     SKIP_ENTRY_FIELDS,
+    TRANSFER_FORMAT,
 )
 from .coordinator import (
     HomeKeeperCoordinator,
@@ -96,6 +99,10 @@ from .sensor_watcher import (
 from .shopping_sync import ShoppingListSync
 from .store import HomeKeeperStore
 from .todo_list_sync import TodoListSync
+from .transfer_runner import (
+    async_export_document,
+    async_import_document,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -241,6 +248,15 @@ SKIP_TASK_SCHEMA = vol.Schema(
         vol.Optional("note"): cv.string,
         vol.Optional("who"): cv.string,
         vol.Optional("reading"): vol.Coerce(float),
+    }
+)
+# Pull-forward: move a task's due date to now, independent of its periodic schedule
+# — the mirror of snooze. ``origin`` is echoed in the home_keeper_task_pulled_forward
+# event for loop prevention, matching snooze/skip.
+PULL_FORWARD_TASK_SCHEMA = vol.Schema(
+    {
+        vol.Required("task_id"): cv.string,
+        vol.Optional("origin"): cv.string,
     }
 )
 
@@ -497,6 +513,138 @@ SIGN_PART_FILE_URL_SCHEMA = vol.Schema(
 )
 EXPORT_INVENTORY_SCHEMA = vol.Schema({})
 
+# The portable document, both directions. ``document`` is deliberately a bare dict or
+# string rather than a spelled-out voluptuous shape: ``transfer.plan_import`` validates
+# the whole thing against the live store — which a schema cannot see — and reports every
+# problem at once with a path, instead of failing on the first key at the edge. A string
+# is the whole file as text, which the same function reads; the panel sends that, so
+# there is one YAML parser rather than a second one in the browser.
+#
+# The published JSON Schema is a *separate* declaration, below, for documentation only.
+EXPORT_DATA_SCHEMA = vol.Schema(
+    {vol.Optional("include"): vol.All(cv.ensure_list, [vol.In(transfer.SECTIONS)])}
+)
+IMPORT_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required("document"): vol.Any(dict, cv.string),
+        vol.Optional("dry_run", default=False): cv.boolean,
+        vol.Optional("match", default="auto"): vol.In(("auto", "none")),
+    }
+)
+
+
+# ── The document's published shape ───────────────────────────────────────────
+#
+# ``ci/generate_schema.py`` converts the schema below into the JSON Schema published
+# at :data:`const.TRANSFER_SCHEMA_URL`, which every exported file names on its first
+# line so an editor can check it as you type. The conversion is mechanical
+# (``voluptuous_openapi.convert``), which is the whole point: the published contract is
+# a transform of the validator the service actually runs, so it cannot drift from it.
+#
+# It is a *declaration*, not a gate. ``IMPORT_DATA_SCHEMA`` above still takes a bare
+# dict, for the reason stated there. ``tests/unit/test_generate_schema.py`` is what
+# keeps this declaration honest: it compares the field set against the records
+# ``models.build_task`` and ``assets.build_asset`` really build.
+
+
+# One season window. ``ADD_TASK_SCHEMA`` takes a bare ``dict`` here and leaves the
+# checking to ``models.normalize_active_season``, which is the right trade for a
+# service call — the normalizer gives a better message than a schema would. A published
+# schema has no normalizer to fall back on, so it says the shape: ``MM-DD``, not a full
+# date, which is the mistake somebody writing a document by hand actually makes.
+_SEASON_WINDOW_SCHEMA = vol.Schema(
+    {
+        vol.Required("start"): vol.Match(r"^\d{2}-\d{2}$"),
+        vol.Required("end"): vol.Match(r"^\d{2}-\d{2}$"),
+    }
+)
+
+
+def _entry_schema(fields: list[str], when_key: str) -> vol.Schema:
+    """One history or skip entry, typed by the service that records one.
+
+    The field *names* come from ``const``; their *types* are lifted out of
+    ``COMPLETE_TASK_SCHEMA`` and ``SKIP_TASK_SCHEMA`` by name, so a completion's
+    ``cost`` is a float in the document because it is a float in the service. Writing
+    the types out again here would be a second answer to a question already answered
+    two hundred lines up.
+    """
+    known: dict[str, Any] = {}
+    for schema in (COMPLETE_TASK_SCHEMA.schema, SKIP_TASK_SCHEMA.schema):
+        for marker, validator in schema.items():
+            known[str(marker.schema)] = validator
+    entry: dict[Any, Any] = {vol.Required(when_key): cv.string}
+    for name in fields:
+        entry[vol.Optional(name)] = known[name]
+    return vol.Schema(entry)
+
+
+# The keys a record carries that no service takes. Everything else on a record is an
+# ``add_task`` / ``add_asset`` field, and types itself from the service schema.
+TRANSFER_TASK_RECORD_SCHEMA = vol.Schema(
+    {
+        **{
+            marker: validator
+            for marker, validator in ADD_TASK_SCHEMA.schema.items()
+            if marker.schema not in transfer.UNPORTABLE_TASK_KEYS
+        },
+        # Home Keeper's own id, and the caller's. The primary-key ladder tries them
+        # in this order, then falls back to the name.
+        vol.Optional("id"): cv.string,
+        vol.Optional("external_id"): cv.string,
+        # An area by name and an appliance by external_id, name or id: a document has
+        # to read on an install whose registry ids are all different.
+        vol.Optional("area"): cv.string,
+        vol.Optional("appliance"): cv.string,
+        vol.Optional("enabled"): cv.boolean,
+        # Spelled out rather than inherited: ``vol.Any(None, dict, [dict])`` carries no
+        # shape at all, and a schema that says "object" would reject the list every
+        # export actually writes.
+        vol.Optional("active_season"): vol.Any(
+            None, _SEASON_WINDOW_SCHEMA, [_SEASON_WINDOW_SCHEMA]
+        ),
+        vol.Optional("history"): [
+            _entry_schema(COMPLETION_ENTRY_FIELDS, "completed_at")
+        ],
+        vol.Optional("skips"): [_entry_schema(SKIP_ENTRY_FIELDS, "skipped_at")],
+    },
+    # An unknown field is a named warning on import, not an error, so the schema has
+    # to allow one. Same reasoning as the document below.
+    extra=vol.ALLOW_EXTRA,
+)
+TRANSFER_ASSET_RECORD_SCHEMA = vol.Schema(
+    {
+        **ADD_ASSET_SCHEMA.schema,
+        vol.Optional("id"): cv.string,
+        vol.Optional("external_id"): cv.string,
+        vol.Optional("area"): cv.string,
+        vol.Optional("archived"): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+TRANSFER_DOCUMENT_SCHEMA = vol.Schema(
+    {
+        vol.Required("home_keeper"): vol.Schema(
+            {
+                # Optional because ``plan_import`` defaults it: a file a person typed
+                # by hand should not be refused for leaving out a number it can guess.
+                vol.Optional("format"): vol.All(
+                    int, vol.Range(min=1, max=TRANSFER_FORMAT)
+                ),
+                vol.Optional("version"): cv.string,
+                vol.Optional("exported_at"): cv.string,
+            },
+            extra=vol.ALLOW_EXTRA,
+        ),
+        vol.Optional("appliances"): [TRANSFER_ASSET_RECORD_SCHEMA],
+        vol.Optional("tasks"): [TRANSFER_TASK_RECORD_SCHEMA],
+    },
+    # An unknown field or an unknown section is a named warning on import, never an
+    # error, so the published schema has to allow one too. A schema stricter than the
+    # code it describes sends people to fix files that would have imported.
+    extra=vol.ALLOW_EXTRA,
+)
+
 # Send an actionable notification on demand for what's due now (the pull / "walk"
 # entry point). Name a saved notification, or a profile (filter), optionally with a
 # target override. Custom filters/delivery live on saved Profiles/Notifications (the
@@ -522,10 +670,12 @@ NOTIFY_SCHEMA = vol.Schema(
 SET_OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Optional(OPTION_SYNC_PROBLEM_SENSORS): cv.boolean,
-        # Whether the panel and notification button sets offer Snooze / Skip. The
-        # services themselves stay callable either way (see const.OPTION_ALLOW_SNOOZE).
+        # Whether the panel and notification button sets offer Snooze / Skip /
+        # Pull forward. The services themselves stay callable either way (see
+        # const.OPTION_ALLOW_SNOOZE).
         vol.Optional(OPTION_ALLOW_SNOOZE): cv.boolean,
         vol.Optional(OPTION_ALLOW_SKIP): cv.boolean,
+        vol.Optional(OPTION_ALLOW_PULL_FORWARD): cv.boolean,
         vol.Optional(OPTION_ONE_OFF_RETENTION_DAYS): vol.All(
             vol.Coerce(int), vol.Range(min=0)
         ),
@@ -1118,6 +1268,15 @@ def _register_services(hass: HomeAssistant) -> None:
             )
         await coord.async_request_refresh()
 
+    async def handle_pull_forward_task(call: ServiceCall) -> None:
+        coord = _coordinator()
+        task_id = _task_ref(coord, call.data["task_id"])
+        with _store_errors(task_id=task_id):
+            await coord.store.pull_forward_task(task_id, origin=call.data.get("origin"))
+        # Pull-forward only moves next_due (like snooze); the per-task entity set is
+        # unchanged, so a refresh is enough — no entry reload.
+        await coord.async_request_refresh()
+
     async def handle_update_skip(call: ServiceCall) -> None:
         coord = _coordinator()
         task_id = _task_ref(coord, call.data["task_id"])
@@ -1353,6 +1512,19 @@ def _register_services(hass: HomeAssistant) -> None:
         csv = inventory.inventory_to_csv(report, lang=hass.config.language)
         return {"inventory": report, "csv": csv}
 
+    async def handle_export_data(call: ServiceCall) -> dict[str, Any]:
+        # Admin-only: the document is every task, note, serial number and cost in
+        # the store. Mirrors ``ws_export_data``'s ``require_admin``.
+        await _verify_admin(call)
+        return await async_export_document(hass, _coordinator(), dict(call.data))
+
+    async def handle_import_data(call: ServiceCall) -> dict[str, Any]:
+        # Admin-only: it writes tasks and appliances wholesale. Mirrors
+        # ``ws_import_data``'s ``require_admin``.
+        await _verify_admin(call)
+        with _store_errors():
+            return await async_import_document(hass, _coordinator(), dict(call.data))
+
     hass.services.async_register(
         DOMAIN,
         "add_task",
@@ -1395,6 +1567,12 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, "skip_task", handle_skip_task, SKIP_TASK_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "pull_forward_task",
+        handle_pull_forward_task,
+        PULL_FORWARD_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN, "update_skip", handle_update_skip, UPDATE_SKIP_SCHEMA
@@ -1573,6 +1751,20 @@ def _register_services(hass: HomeAssistant) -> None:
         "export_inventory",
         handle_export_inventory,
         EXPORT_INVENTORY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "export_data",
+        handle_export_data,
+        EXPORT_DATA_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "import_data",
+        handle_import_data,
+        IMPORT_DATA_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

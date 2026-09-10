@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Avança la tasca",
+      "description": "Avança a avui la data de venciment d'una tasca, independentment de la seva periodicitat, sense registrar cap realització ni modificar-ne la recurrència.",
+      "fields": {
+        "task_id": {
+          "name": "Nom o ID de tasca",
+          "description": "L'id de la tasca a avançar. El seu nom també funciona. El tauler mostra l'id."
+        },
+        "origin": {
+          "name": "Origen",
+          "description": "Marcador opcional de text lliure que es retorna a l'esdeveniment home_keeper_task_pulled_forward, perquè una integració col·laboradora pugui reconèixer i ignorar l'avançament que ha provocat (prevenció de bucles). Home Keeper no l'interpreta."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Vincula la tasca a un consumible",
       "description": "Vincula una tasca a un consumible/peça d'un electrodomèstic perquè en completar-la es consumeixi un recanvi de l'estoc i es dispari un esdeveniment d'estoc baix al llindar de reposició. Omet asset_id i part_id per esborrar el vincle.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Exportar inventari",
       "description": "Retorna un inventari de la llar per a l'assegurança com a resposta (una fila per electrodomèstic més els totals), amb un CSV a punt per desar sota la clau \"csv\"."
+    },
+    "export_data": {
+      "name": "Exporta les dades",
+      "description": "Retorna cada tasca i cada electrodomèstic en un document transferible, juntament amb aquest mateix document com a fitxer YAML a punt per desar, sota la clau \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Inclou",
+          "description": "Quines seccions s'exporten. Totes dues per defecte."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importa les dades",
+      "description": "Llegeix un document transferible i crea o actualitza les tasques i els electrodomèstics que conté. Primer es comprova tot el document, de manera que un document amb un error no escriu res.",
+      "fields": {
+        "document": {
+          "name": "Document",
+          "description": "El document que es llegirà, amb la forma que retorna export_data. Doneu-lo com a mapa o com tot el fitxer en una cadena."
+        },
+        "dry_run": {
+          "name": "Només vista prèvia",
+          "description": "Comprova el document i informa de què canviaria, sense escriure res."
+        },
+        "match": {
+          "name": "Coincidència",
+          "description": "Com es busca el registre a què es refereix. \"auto\" cerca per id, després external_id i després el nom. \"none\" crea cada registre."
+        }
+      }
     },
     "set_options": {
       "name": "Defineix opcions",

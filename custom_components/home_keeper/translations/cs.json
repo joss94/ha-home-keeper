@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Urychlit úkol",
+      "description": "Přesune datum splatnosti úkolu na dnešek, bez ohledu na jeho pravidelný rozvrh, aniž by se zaznamenalo dokončení nebo změnilo jeho opakování.",
+      "fields": {
+        "task_id": {
+          "name": "Název nebo ID úkolu",
+          "description": "ID úkolu, který se má urychlit. Funguje i jeho název. Panel zobrazuje id."
+        },
+        "origin": {
+          "name": "Původ",
+          "description": "Volitelná značka ve volném textu, která se vrací zpět v události home_keeper_task_pulled_forward, aby přispívající integrace mohla rozpoznat a ignorovat urychlení, které sama vyvolala (prevence smyčky). Home Keeper ji neinterpretuje."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Propojit úkol se spotřebním materiálem",
       "description": "Propojí úkol se spotřebním materiálem/dílem spotřebiče, takže jeho dokončení spotřebuje jeden náhradní kus ze zásob a při objednací hranici vyvolá událost nízkého stavu zásob. Vynechte asset_id a part_id pro zrušení propojení.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Exportovat inventář",
       "description": "Vrátí domácí inventář pro pojištění jako odpověď (jeden řádek na spotřebič plus součty), s CSV připraveným k uložení pod klíčem \"csv\"."
+    },
+    "export_data": {
+      "name": "Exportovat data",
+      "description": "Vrátí každý úkol a každý spotřebič jako jeden přenosný dokument a tentýž dokument jako hotový soubor YAML pod klíčem \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Zahrnout",
+          "description": "Které části se exportují. Ve výchozím nastavení obě."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importovat data",
+      "description": "Přečte přenosný dokument a vytvoří nebo aktualizuje úkoly a spotřebiče v něm. Nejdřív se zkontroluje celý dokument, takže dokument s chybou nic nezapíše.",
+      "fields": {
+        "document": {
+          "name": "Dokument",
+          "description": "Dokument ke čtení ve tvaru, který vrací export_data. Předejte ho jako mapování nebo jako celý soubor v jednom řetězci."
+        },
+        "dry_run": {
+          "name": "Jen náhled",
+          "description": "Zkontroluje dokument a oznámí, co by se změnilo, aniž by cokoli zapsal."
+        },
+        "match": {
+          "name": "Shoda",
+          "description": "Jak se hledá míněný záznam. \"auto\" hledá podle id, pak podle external_id a pak podle názvu. \"none\" vytvoří každý záznam."
+        }
+      }
     },
     "set_options": {
       "name": "Nastavit možnosti",

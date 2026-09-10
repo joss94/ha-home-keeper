@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Pull forward task",
+      "description": "Move a task's due date to now, independent of its periodic schedule, without recording a completion or changing its recurrence.",
+      "fields": {
+        "task_id": {
+          "name": "Task name or ID",
+          "description": "The id of the task to pull forward. Its name works too. The panel shows the id."
+        },
+        "origin": {
+          "name": "Origin",
+          "description": "Optional free-form marker echoed back in the home_keeper_task_pulled_forward event so a contributing integration can recognise and ignore the pull-forward it triggered (loop prevention), and Home Keeper never interprets it."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Link task to a consumable",
       "description": "Link a task to an appliance consumable/part so completing it consumes one spare from the part's stock and fires a low-stock event at the reorder threshold. Omit asset_id and part_id to clear the link.",
@@ -698,6 +712,34 @@
     "export_inventory": {
       "name": "Export inventory",
       "description": "Return a home inventory for insurance as a response (one row per appliance plus totals), with a ready-to-save CSV under the \"csv\" key."
+    },
+    "export_data": {
+      "name": "Export data",
+      "description": "Return every task and appliance as one portable document, with the same document as a ready-to-save YAML file under the \"yaml\" key.",
+      "fields": {
+        "include": {
+          "name": "Include",
+          "description": "Which sections to export. Both by default."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Import data",
+      "description": "Read a portable document and create or update the tasks and appliances in it. The whole document is checked first, so a document with an error writes nothing.",
+      "fields": {
+        "document": {
+          "name": "Document",
+          "description": "The document to read, in the shape export_data returns. Give it as a mapping, or as the whole file in one string."
+        },
+        "dry_run": {
+          "name": "Preview only",
+          "description": "Check the document and report what would change, without writing anything."
+        },
+        "match": {
+          "name": "Match",
+          "description": "How to find the record a document record refers to. \"auto\" matches on id, then external_id, then name. \"none\" creates every record."
+        }
+      }
     },
     "set_options": {
       "name": "Set options",

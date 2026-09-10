@@ -371,6 +371,20 @@
         }
       }
     },
+    "pull_forward_task": {
+      "name": "Tidigarelägg uppgift",
+      "description": "Flyttar en uppgifts förfallodatum till idag, oberoende av dess periodiska schema, utan att registrera ett slutförande eller ändra dess upprepning.",
+      "fields": {
+        "task_id": {
+          "name": "Uppgiftsnamn eller -ID",
+          "description": "ID för uppgiften som ska tidigareläggas. Namnet fungerar också. Panelen visar id:t."
+        },
+        "origin": {
+          "name": "Ursprung",
+          "description": "Valfri fritextmarkör som återges i händelsen home_keeper_task_pulled_forward, så att en bidragande integration kan känna igen och ignorera den tidigareläggning den utlöste (loopförebyggande). Home Keeper tolkar den inte."
+        }
+      }
+    },
     "set_task_consumable": {
       "name": "Länka uppgift till en förbrukningsvara",
       "description": "Länkar en uppgift till en förbrukningsvara/del på en apparat så att slutförandet förbrukar en reservdel från lagret och utlöser en händelse om lågt lager vid beställningsgränsen. Utelämna asset_id och part_id för att ta bort länken.",
@@ -610,6 +624,34 @@
     "export_inventory": {
       "name": "Exportera inventarium",
       "description": "Returnerar ett heminventarium för försäkring som svar (en rad per apparat plus summor), med en färdig CSV-fil att spara under nyckeln \"csv\"."
+    },
+    "export_data": {
+      "name": "Exportera data",
+      "description": "Ger varje uppgift och varje apparat som ett flyttbart dokument, plus samma dokument som en färdig YAML-fil under nyckeln \"yaml\".",
+      "fields": {
+        "include": {
+          "name": "Ta med",
+          "description": "Vilka delar som exporteras. Båda som standard."
+        }
+      }
+    },
+    "import_data": {
+      "name": "Importera data",
+      "description": "Läser ett flyttbart dokument och skapar eller uppdaterar uppgifterna och apparaterna i det. Hela dokumentet kontrolleras först, så ett dokument med ett fel skriver ingenting.",
+      "fields": {
+        "document": {
+          "name": "Dokument",
+          "description": "Dokumentet som läses, i den form export_data ger. Ange det som en avbildning eller som hela filen i en sträng."
+        },
+        "dry_run": {
+          "name": "Endast förhandsgranskning",
+          "description": "Kontrollerar dokumentet och rapporterar vad som skulle ändras, utan att skriva något."
+        },
+        "match": {
+          "name": "Träff",
+          "description": "Hur posten som avses hittas. \"auto\" söker på id, sedan external_id, sedan namnet. \"none\" skapar varje post."
+        }
+      }
     },
     "set_options": {
       "name": "Ange alternativ",

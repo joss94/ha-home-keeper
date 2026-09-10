@@ -8,7 +8,7 @@ PLATFORMS = ["todo", "calendar", "button", "sensor", "binary_sensor", "number"]
 # Frontend panel.
 # PANEL_VERSION is the single source of truth that release.yml validates against
 # manifest.json's "version" (mirrors Pawsistant's CARD_VERSION check).
-PANEL_VERSION = "0.23.0b1"
+PANEL_VERSION = "0.23.0b2"
 PANEL_URL_PATH = "home-keeper"  # sidebar route -> /home-keeper
 PANEL_STATIC_URL = "/home_keeper_panel"  # static path that serves the JS bundle
 PANEL_JS_FILENAME = "home-keeper-panel.js"
@@ -47,6 +47,64 @@ PART_FILE_URL_PREFIX = "/api/home_keeper/part_document"
 # deleted, this history is archived onto the appliance
 # (see ``assets.append_task_history``).
 MAX_COMPLETION_HISTORY = 500
+
+# An author-chosen stable key on a task or an appliance, used by the import/export
+# document (``transfer.py``) as the second step of its primary-key ladder: id first,
+# then this, then the name. It is the key a migration script or a generated document
+# sets so a re-run updates the same records rather than duplicating them. Home Keeper
+# never reads it for anything else — it is opaque, and empty when unset.
+MAX_EXTERNAL_ID_LEN = 128
+
+# How many records one import document may carry per section. A bound on the work a
+# single service call can ask for, not a statement about how many tasks Home Keeper
+# holds; a bigger migration splits into several documents.
+MAX_IMPORT_RECORDS = 2000
+
+# The largest import document Home Keeper reads, in bytes. Checked before the parser
+# runs, because the parser is what a huge file attacks: ``MAX_IMPORT_RECORDS`` counts
+# records, and a document is already expanded in memory by the time there are records
+# to count. 8 MiB holds a very large migration.
+#
+# This is the ceiling on the *service* (``home_keeper.import_data``), which is the
+# path a script or an automation takes. The panel cannot reach it — see
+# ``MAX_IMPORT_WS_BYTES``.
+MAX_IMPORT_BYTES = 8 * 1024 * 1024
+
+# The largest websocket frame Home Assistant will accept, in bytes.
+#
+# Home Assistant builds its ``WebSocketResponse`` without passing ``max_msg_size``, so
+# aiohttp's own 4 MiB default applies, and the check is on the *decompressed* frame.
+# Going over it does not fail the command: aiohttp raises during the read, and Home
+# Assistant closes the whole connection with "Decompressed message exceeds size limit
+# 4194304". The panel therefore loses its link to Home Assistant rather than getting an
+# answer, which is why the size has to be caught in the browser before the send.
+#
+# It is half of ``MAX_IMPORT_BYTES`` on purpose, and the two are not interchangeable: a
+# document between the two sizes imports through the service and cannot be pasted into
+# the panel. ``frontend/src/limits.ts`` mirrors this and
+# ``tests/unit/test_upload_limit_parity.py`` fails the build if the two drift.
+MAX_IMPORT_WS_BYTES = 4 * 1024 * 1024
+
+# The format version of the import/export document. Bumped only when the meaning of
+# an existing key changes — adding a section or a field is additive and does not.
+# ``transfer.py`` refuses a document declaring a newer version than this.
+#
+# Serialization is not shape: the document became YAML in 0.23.0 and stayed format 1,
+# so every file written by an earlier build still imports.
+TRANSFER_FORMAT = 1
+
+# Where the published JSON Schema for that format lives. Two consumers, so they cannot
+# disagree: ``transfer.document_to_yaml`` writes it as the first line of every export
+# (the ``yaml-language-server`` convention, which makes an exported file self-validating
+# in an editor), and ``ci/generate_schema.py`` writes it as the schema's own ``$id``.
+#
+# The version is in the filename on purpose. A file exported today keeps pointing at
+# the schema it was written for, so bumping ``TRANSFER_FORMAT`` must *add* a file
+# rather than replace one — see the warning in ``ci/generate_schema.py``.
+TRANSFER_SCHEMA_URL = (
+    "https://prestomation.github.io/ha-home-keeper"
+    f"/schema/home-keeper-{TRANSFER_FORMAT}.schema.json"
+)
 
 # Event fired on the HA event bus whenever a task is completed (from any surface:
 # the to-do list, a device mark-done button, or the complete_task service). This is

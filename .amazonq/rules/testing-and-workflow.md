@@ -6,12 +6,12 @@
 - Never push directly to `main`. Work on a feature branch and open a PR; squash
   merge.
 - Update `CHANGELOG.md` for every user-facing change before a release.
-- **User-facing text is drafted by a Sonnet 4.5 subagent** (`model: sonnet`), not written
-  inline: `CHANGELOG.md` bullets, `README.md`, the canonical `docs/*.md`, `strings.json`,
-  `services.yaml` descriptions, the frontend locale. Hand it the diff, the surrounding
-  section for voice, and the house rules it must satisfy; review and edit the draft before
-  committing. Commit messages, PR bodies and code comments stay inline — they are not
-  user-facing.
+- **User-facing text is held to the house rules**: `CHANGELOG.md` bullets,
+  `README.md`, the canonical `docs/*.md`, `strings.json`, `services.yaml` descriptions
+  and the frontend locale. Each must satisfy the STE100 rules, the three-sentence
+  CHANGELOG budget and the vale AI-tells style. Read the surrounding section for voice
+  before you add to it. Commit messages, PR bodies and code comments are not
+  user-facing and are not held to this.
 - **Keep every CHANGELOG bullet to three sentences at most.** A bold lead naming the
   change, then what a user notices, then a caveat or `(Fixes #N)` if one is needed.
   Cut the worked example, the before-and-after story, the list of every surface the
@@ -118,6 +118,17 @@
   through the parent's `__name__` — aliasing them makes the modules
   `test_coordinator_purge.py` / `test_calendar.py` load as `hk.coordinator` pull
   in the real HA-importing siblings instead of their fakes.
+- **Property-based tests** (hypothesis) live in `tests/unit/test_*_properties.py` and
+  share `tests/unit/property_strategies.py`. They carry the `property` marker.
+  Hypothesis is in `requirements-test.txt`, so each file imports it plainly and
+  **fails** when it is missing. Build generated records through
+  `models.build_task` / `assets.build_asset`, never by hand. A property holds for its
+  whole domain or gets scoped until it does. Pin a real failure with
+  `xfail(strict=True)` plus an `@example`; never absorb one into a weaker assertion.
+  `HK_HYPOTHESIS_PROFILE` selects `dev` / `ci` / `mutmut`, and the runner scripts export
+  it. These tests are **scored by the mutation gate rather than deselected from it**:
+  they kill mutants the example-based tests miss, and the shrink-free `mutmut` profile
+  is what keeps the job inside its budget.
 - Layers: `tests/unit` (pytest, pure logic), `tests/frontend` +
   `frontend/test` (vitest), `tests/integration` (Docker HA), `tests/e2e`
   (Playwright), `tests/upgrade` (two-phase HA version upgrade). Run e2e/integration
@@ -128,8 +139,48 @@
   a service, event, websocket command, device trigger, entity platform or HTTP view
   added in one place and forgotten in the others fails there rather than shipping.
   Adding a surface means adding its spec. Its `services.yaml` check and the
-  generator's tests need `PyYAML`, so the bare-`pytest` loop is now
-  `pip install pytest PyYAML`; without it those few tests skip and the rest still run.
+  generator's tests need `PyYAML`, which `requirements-test.txt` names, so they import
+  it plainly and a missing `PyYAML` fails them rather than skipping them.
+- **`tests/unit/test_generate_schema.py` is the drift gate for the published JSON
+  Schema**, and it runs only where `HK_SCHEMA_GATE` is set — `lint.yml`'s **mypy** job.
+  It needs a Home Assistant new enough to import the integration, and an
+  `importorskip("homeassistant")` answered the wrong question: the unit lane installs
+  `pytest-homeassistant-custom-component`, so Home Assistant is importable there on
+  whatever release pip backtracked to, and the gate failed on a missing
+  `LOVELACE_DATA`. **A guard that asks "is it installed?" where the real question is
+  "is it current?" is the #199 trap.** The mypy job pins a Python at HA's floor, runs
+  `ci/check-ha-version.py`, and greps the pytest output so a gate that silently stops
+  running fails instead. The gate runs the generator as a *subprocess*, because
+  `tests/conftest.py` installs stub parent packages so the pure core loads without Home
+  Assistant and promises nothing imports the real package in-process.
+- **A missing test dependency fails the run; it never skips it quietly.** Every
+  package `requirements-test.txt` names is imported plainly — `import hypothesis`,
+  `import yaml` — so a missing one raises at collection and the run goes red.
+  `ci/install-deps.sh` and `ci/setup-ci-deps.sh` (the session hook) install them all,
+  so a missing one is a broken environment rather than a smaller suite. A skip reads
+  as "this lane does not cover that", which is why #309 shipped a red pull request:
+  `hypothesis` was not installed and two files went quiet. It costs most for the
+  property tests, because the mutation gate scores them rather than deselecting them:
+  a quiet skip takes away the tests that kill the mutants the example-based ones
+  miss. `pytest.importorskip` is
+  right only for a package a lane really may not have — `homeassistant` and
+  `voluptuous`. Do not add a guard that reads the requirements file and checks the
+  whole list at session start: the mypy job installs its own three packages and
+  nothing else, so such a check fails a lane that is working.
+- **A test dependency that changes what other tests skip does not belong in
+  `requirements-test.txt`.** `voluptuous-openapi` pulls `voluptuous` in, and
+  `voluptuous` is what `test_config_flow.py` and its neighbours guard on — adding it
+  for every lane quietly changed which modules ran. Install such a dependency in the
+  one job that needs it (`ci/install-schema-deps.sh`). `test_generate_schema.py` still
+  imports both plainly, under its `HK_SCHEMA_GATE` skip: the gate is what says the lane
+  opted in, so a missing package there is a broken job.
+- **Never subtract `EXCLUDED_*` keys from the published schema.** They name what the
+  *export* omits; the schema describes what *import* accepts, and three of them
+  (`last_completed`, `source`, appliance `device_id`) are real service fields an
+  import still takes. The schema withholds only `transfer.UNPORTABLE_TASK_KEYS`, and
+  `additionalProperties` stays open at every level, because an unknown field or
+  section is a named warning on import and never an error — a schema stricter than the
+  code it describes sends people to fix files that would have imported.
 - **A panel assertion is not coverage for a native entity.** The panel and the
   `todo`/`calendar` entities are separate projections of the same store, so the panel
   being right proves nothing about them. #221 shipped with a passing e2e test that

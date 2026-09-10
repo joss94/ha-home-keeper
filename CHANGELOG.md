@@ -6,13 +6,32 @@ All notable changes to Home Keeper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic
 versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
 
-## [0.23.0b1]
+## [0.23.0b2]
 
 ### Added
 
 - **Minimal layout.** A Settings toggle switches the task list to a compact grid
   that shows only the name and status. Tap a card for quick actions, or press and
   hold to open its details.
+
+### Fixed
+
+- **Fully managed tasks.** A task whose companion sets every field no longer shows
+  Edit. The page names the companion instead.
+
+## [0.23.0b1]
+
+### Added
+
+- **Import and export.** Settings has a new *Import and export* card that saves every
+  task and appliance to one YAML file, and reads one back. Move to a new Home
+  Assistant, or bring years of history in from another system. (Fixes #308)
+- **Published document schema.** The import and export format has a JSON Schema on the
+  documentation site. Every export names it, so an editor checks the file and completes
+  the field names as you write.
+- **A stable key of your own.** Give a task or an appliance an `external_id` of your
+  choice. An import matches on it, so running a migration script twice updates your
+  records instead of copying them.
 
 ### Fixed
 

@@ -38,6 +38,7 @@ import type {
   NoteTarget,
   QuickActionsState,
   TaskFilter,
+  TransferState,
 } from './panel-types';
 import type {
   Asset,
@@ -142,6 +143,15 @@ export interface PanelHost extends HTMLElement {
   _entryDomains: Record<string, string>;
   /** Download the appliance inventory (the appliance list's Export action). */
   _exportInventory(): Promise<void>;
+  /** Save every task and appliance as one JSON file (Settings -> Import and export). */
+  _exportData(): Promise<void>;
+  /** The import card's state: the pasted or picked document text, the last preview,
+   *  and whether a call is in flight. */
+  _transfer: TransferState;
+  /** Check the pasted document and show what an import would do, writing nothing. */
+  _previewImport(): Promise<void>;
+  /** Apply the document the preview approved. */
+  _runImport(): Promise<void>;
   /** Which scope pill the task list is filtered to. */
   _filter: TaskFilter;
   /** Focus *el* without letting a not-yet-upgraded HA element abort the render;

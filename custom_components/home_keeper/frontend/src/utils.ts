@@ -917,6 +917,7 @@ export const SETTINGS_SECTIONS = [
   'profiles',
   'notifications',
   'companions',
+  'transfer',
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 

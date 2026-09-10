@@ -22,6 +22,7 @@ from .const import (
     COMPLETION_DETAIL_REQUIRED,
     COMPLETION_METADATA_FIELDS,
     FREQS,
+    MAX_EXTERNAL_ID_LEN,
     MAX_INTERVAL,
     MAX_SENSOR_STATE_LEN,
     MAX_SENSOR_UNIT_LEN,
@@ -393,6 +394,54 @@ def normalize_tag_id(value: Any) -> str | None:
     return value.strip() or None
 
 
+def _reject_boolean(value: Any, field: str) -> Any:
+    """Refuse a boolean where text belongs, instead of storing its repr.
+
+    YAML 1.1 reads a bare ``no``, ``yes``, ``on`` and ``off`` as a boolean, and the
+    import document's loader keeps that resolver on purpose: ``enabled: no`` is what a
+    reader of Home Assistant YAML expects, and ``archived`` and ``require_tag_scan``
+    are real booleans. The cost landed on the text fields, where ``str()`` turned the
+    value into Python's own repr — a task written ``name: no`` was stored as
+    ``"False"``, silently, on the one import meant to carry it.
+
+    The published JSON Schema has always typed these fields ``string``, so this makes
+    the code agree with the contract it already publishes rather than narrowing it.
+
+    ``isinstance``, not a truth test: ``False`` has to be caught as surely as ``True``.
+    A number is still coerced, because an unquoted ``part_number: 4711`` is an ordinary
+    thing to write and means exactly what it looks like.
+    """
+    if isinstance(value, bool):
+        raise TaskValidationError(
+            f"{field} must be text. YAML reads a bare yes, no, on and off as true or "
+            "false, so put quotation marks around the value."
+        )
+    return value
+
+
+def normalize_external_id(value: Any) -> str:
+    """Normalize the caller's stable key for a task or an appliance.
+
+    The import/export document matches a record on its Home Keeper id first, then on
+    this, then on its name (see ``transfer.py``). Home Keeper never interprets the
+    string — it exists so a migration script, or a document written for one, can name
+    a record in the author's own vocabulary ("centriq-4711", "furnace-filter") and
+    have a re-run update that record instead of creating a second one.
+
+    Absent, ``None`` and whitespace all normalize to ``""``, which means "no key" and
+    never matches anything — otherwise every keyless record would collide with every
+    other one.
+    """
+    if value is None:
+        return ""
+    text = str(_reject_boolean(value, "external_id")).strip()
+    if len(text) > MAX_EXTERNAL_ID_LEN:
+        raise TaskValidationError(
+            f"external_id must be at most {MAX_EXTERNAL_ID_LEN} characters"
+        )
+    return text
+
+
 def normalize_labels(value: Any) -> list[str]:
     """Normalize a task's ``labels`` into a de-duplicated list of HA label ids.
 
@@ -547,7 +596,7 @@ def normalize_fields(data: dict, *, tz: Any = None) -> dict:
     caller passes Home Assistant's configured tz, e.g. ``dt_util.now().tzinfo``);
     if omitted, the system local tz is used as a fallback.
     """
-    name = str(_require(data, "name")).strip()
+    name = str(_reject_boolean(_require(data, "name"), "name")).strip()
     if not name:
         raise TaskValidationError("name must not be empty")
 
@@ -563,7 +612,7 @@ def normalize_fields(data: dict, *, tz: Any = None) -> dict:
         "name": name,
         # ``str(None)`` would store the literal "None"; coalesce to "" so an explicit
         # ``notes: null`` (reachable via the websocket updates dict) clears the field.
-        "notes": str(data.get("notes") or ""),
+        "notes": str(_reject_boolean(data.get("notes"), "notes") or ""),
         "recurrence_type": rec_type,
         "device_id": data.get("device_id") or None,
         "area_id": data.get("area_id") or None,
@@ -665,6 +714,23 @@ def normalize_fields(data: dict, *, tz: Any = None) -> dict:
         fields["active_season"] = normalize_active_season(season)
 
     return fields
+
+
+def validate_source(source: Any) -> None:
+    """Reject a ``source`` that is not a mapping.
+
+    ``source`` is opaque provenance — Home Keeper never reads inside another
+    integration's namespace — but the *shape* is not opaque. Every reconciler reads
+    it as ``{namespace: payload}``, and ``store`` walks ``source.values()`` outright
+    when it repoints device ids. A string would pass every ``isinstance`` guard by
+    being skipped, then break that walk with ``'str' object has no attribute
+    'values'`` long after the write that stored it.
+
+    The service schemas have always typed this ``dict``; this is the same rule for
+    the paths that do not go through voluptuous.
+    """
+    if source is not None and not isinstance(source, dict):
+        raise TaskValidationError("source must be a mapping")
 
 
 def validate_managed_by(managed_by: Any) -> None:
@@ -776,6 +842,7 @@ def build_task(data: dict, *, now: datetime) -> dict:
     if rec_type == REC_ONE_OFF and not data.get("due"):
         data = {**data, "due": now.isoformat()}
     fields = normalize_fields(data, tz=now.tzinfo)
+    validate_source(data.get("source"))
     validate_managed_by(data.get("managed_by"))
     tag_id = normalize_tag_id(data.get("tag_id"))
     require_tag_scan = bool(data.get("require_tag_scan"))
@@ -800,6 +867,10 @@ def build_task(data: dict, *, now: datetime) -> dict:
         "managed_by": data.get("managed_by"),
         # HA label-registry ids attached to this task. Free-form, many-to-many, and
         # used (alongside device/area labels) to scope the dashboard card.
+        # An author-chosen stable key for import/export. Independent of recurrence
+        # and identity, like labels, and normalized here rather than in
+        # ``normalize_fields`` so an update can only set it when it is actually sent.
+        "external_id": normalize_external_id(data.get("external_id")),
         "labels": normalize_labels(data.get("labels")),
         # References to appliance links (documents/metadata) the dashboard card shows
         # on this task's row. Independent of recurrence/identity, like labels.
@@ -933,6 +1004,13 @@ def merge_update(existing: dict, updates: dict, *, now: datetime) -> dict:
     # a routine update_task call can't accidentally clear chips set at creation time.
     if "task_chips" in updates:
         merged["task_chips"] = normalize_task_chips(updates["task_chips"])
+
+    # The stable import/export key follows the same only-when-sent rule. This is what
+    # makes an import that omits ``external_id`` on an update leave the stored key
+    # alone rather than clearing it — a re-import would otherwise stop matching the
+    # very records it just wrote.
+    if "external_id" in updates:
+        merged["external_id"] = normalize_external_id(updates["external_id"])
 
     # The tag binding follows the same only-when-sent rule, so a plain rename can't
     # unlink a task's tag or drop its scan requirement.

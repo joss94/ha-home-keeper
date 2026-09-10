@@ -128,8 +128,15 @@
     `PyYAML` for the API-surface gate (which reads `services.yaml`) and for the
     import/export document, which `transfer.py` writes and reads; `Babel` for the
     locale checks; `hypothesis` for the property-based tests below; `jsonschema` for
-    the published-schema gate. Leave any of them out and those tests skip while the
-    rest still run.
+    the published-schema gate.
+  - **A missing dependency fails the run; it never skips it.** Every package
+    `requirements-test.txt` names is imported plainly, so a missing one is an
+    ImportError at collection. A skip reads as "this lane does not cover that", so a
+    broken environment looked the same as a deliberate exclusion: #309 shipped red
+    with `hypothesis` missing and two files silent. `importorskip` stays for
+    `homeassistant` and `voluptuous`, which a bare install really does not have.
+    `test_generate_schema.py` imports `jsonschema` and `voluptuous_openapi` plainly
+    too, after its `HK_SCHEMA_GATE` skip: the gate says the lane opted in.
   - **The published-schema gate runs only where `HK_SCHEMA_GATE` is set**, which is
     `lint.yml`'s **mypy** job. `tests/unit/test_generate_schema.py` builds the schema
     from the integration's own voluptuous service schemas, so it needs a Home Assistant

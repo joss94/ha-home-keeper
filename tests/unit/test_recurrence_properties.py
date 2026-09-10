@@ -23,11 +23,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import hk_recurrence as r
-import pytest
-
-pytest.importorskip("hypothesis", reason="property-based tests need hypothesis")
-
 import property_strategies as ps
+import pytest
 from hypothesis import assume, example, given
 from hypothesis import strategies as st
 

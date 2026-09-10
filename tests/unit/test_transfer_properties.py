@@ -19,11 +19,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import hk_transfer as tr
-import pytest
-
-pytest.importorskip("hypothesis", reason="property-based tests need hypothesis")
-
 import property_strategies as ps
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 

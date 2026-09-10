@@ -120,8 +120,8 @@
   in the real HA-importing siblings instead of their fakes.
 - **Property-based tests** (hypothesis) live in `tests/unit/test_*_properties.py` and
   share `tests/unit/property_strategies.py`. They carry the `property` marker.
-  Hypothesis is optional: each file opens with `pytest.importorskip`, so a bare install
-  skips them and runs everything else. Build generated records through
+  Hypothesis is in `requirements-test.txt`, so each file imports it plainly and
+  **fails** when it is missing. Build generated records through
   `models.build_task` / `assets.build_asset`, never by hand. A property holds for its
   whole domain or gets scoped until it does. Pin a real failure with
   `xfail(strict=True)` plus an `@example`; never absorb one into a weaker assertion.
@@ -139,8 +139,8 @@
   a service, event, websocket command, device trigger, entity platform or HTTP view
   added in one place and forgotten in the others fails there rather than shipping.
   Adding a surface means adding its spec. Its `services.yaml` check and the
-  generator's tests need `PyYAML`, so the bare-`pytest` loop is now
-  `pip install pytest PyYAML`; without it those few tests skip and the rest still run.
+  generator's tests need `PyYAML`, which `requirements-test.txt` names, so they import
+  it plainly and a missing `PyYAML` fails them rather than skipping them.
 - **`tests/unit/test_generate_schema.py` is the drift gate for the published JSON
   Schema**, and it runs only where `HK_SCHEMA_GATE` is set — `lint.yml`'s **mypy** job.
   It needs a Home Assistant new enough to import the integration, and an
@@ -153,11 +153,27 @@
   running fails instead. The gate runs the generator as a *subprocess*, because
   `tests/conftest.py` installs stub parent packages so the pure core loads without Home
   Assistant and promises nothing imports the real package in-process.
+- **A missing test dependency fails the run; it never skips it quietly.** Every
+  package `requirements-test.txt` names is imported plainly — `import hypothesis`,
+  `import yaml` — so a missing one raises at collection and the run goes red.
+  `ci/install-deps.sh` and `ci/setup-ci-deps.sh` (the session hook) install them all,
+  so a missing one is a broken environment rather than a smaller suite. A skip reads
+  as "this lane does not cover that", which is why #309 shipped a red pull request:
+  `hypothesis` was not installed and two files went quiet. It costs most for the
+  property tests, because the mutation gate scores them rather than deselecting them:
+  a quiet skip takes away the tests that kill the mutants the example-based ones
+  miss. `pytest.importorskip` is
+  right only for a package a lane really may not have — `homeassistant` and
+  `voluptuous`. Do not add a guard that reads the requirements file and checks the
+  whole list at session start: the mypy job installs its own three packages and
+  nothing else, so such a check fails a lane that is working.
 - **A test dependency that changes what other tests skip does not belong in
   `requirements-test.txt`.** `voluptuous-openapi` pulls `voluptuous` in, and
   `voluptuous` is what `test_config_flow.py` and its neighbours guard on — adding it
   for every lane quietly changed which modules ran. Install such a dependency in the
-  one job that needs it (`ci/install-schema-deps.sh`).
+  one job that needs it (`ci/install-schema-deps.sh`). `test_generate_schema.py` still
+  imports both plainly, under its `HK_SCHEMA_GATE` skip: the gate is what says the lane
+  opted in, so a missing package there is a broken job.
 - **Never subtract `EXCLUDED_*` keys from the published schema.** They name what the
   *export* omits; the schema describes what *import* accepts, and three of them
   (`last_completed`, `source`, appliance `device_id`) are real service fields an

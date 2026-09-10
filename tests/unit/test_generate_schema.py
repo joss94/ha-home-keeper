@@ -40,10 +40,10 @@ if not os.environ.get("HK_SCHEMA_GATE"):
         allow_module_level=True,
     )
 
-pytest.importorskip("voluptuous_openapi", reason="the converter")
-jsonschema = pytest.importorskip("jsonschema", reason="nothing validates without it")
-
-from transfer_records import (  # noqa: E402  (after the skips, on purpose)
+import jsonschema
+import voluptuous_openapi  # noqa: F401  (the converter the generator uses)
+import yaml
+from transfer_records import (
     AREA_NAMES,
     NOW,
     _maximal_asset,
@@ -75,7 +75,6 @@ def validator(schema: dict):
 
 
 def _service_fields(name: str) -> set[str]:
-    yaml = pytest.importorskip("yaml", reason="the field list lives in services.yaml")
     document = yaml.safe_load((COMPONENT / "services.yaml").read_text(encoding="utf-8"))
     return set(document[name].get("fields", {}))
 

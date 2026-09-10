@@ -31,7 +31,9 @@ test('capture Home Keeper card screenshots', async ({ page }) => {
   // Tall viewport so even the second (grouped) card sits above the fold and its
   // clip stays inside the rendered image. The default card carries the water-filter
   // task whose appliance link-chips wrap over several rows, so give it ample room.
-  await page.setViewportSize({ width: 1280, height: 2600 });
+  // Pull forward added a fourth per-row action button, pushing rows (and so the
+  // grouped card below) taller than the previous 2600 fit.
+  await page.setViewportSize({ width: 1280, height: 3400 });
   const card = await openCardDashboard(page);
   await expect(card.locator('.hk-name').first()).toBeVisible();
 

@@ -9,7 +9,7 @@
  * are `ha-select` built on `ha-dropdown` (open, then click the role="menuitem").
  */
 import { test, expect, Locator, Page } from '@playwright/test';
-import { openPanel, openDashboard, openPart, openTaskTab } from './tests/helpers';
+import { openPanel, openDashboard, openPart, openTaskTab, setMinimalLayout } from './tests/helpers';
 import {
   centre,
   expandGroup,
@@ -1585,6 +1585,41 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await page.waitForTimeout(1500); // let cards settle
   await page.screenshot({ path: `${OUT}/4-usage-todo-and-calendar.png`, fullPage: true });
 
+  // 59. Settings → General: the Minimal layout switch, on — the compact grid it
+  // turns on is the two shots right after it.
+  await setMinimalLayout(page, true);
+  await openPanel(page);
+  await panel.locator('#tab-settings').click();
+  await expect(panel.locator('#hk-settings-general')).toBeVisible();
+  await expect(panel.locator('#hk-settings-general ha-switch')).toHaveJSProperty('checked', true);
+  await panel.locator('#hk-settings-general').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await panel
+    .locator('#hk-settings-general')
+    .screenshot({ path: `${OUT}/59-panel-settings-minimal-layout.png` });
+
+  // 59b. The task dashboard in the minimal layout: a dense, equal-width 2-column
+  // grid — name and status only, nothing else on the card.
+  await panel.locator('#tab-tasks').click();
+  await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}/59b-panel-task-minimal-grid.png`, fullPage: true });
+
+  // 59c. A tap opens the quick-actions popup — Done, Skip, Snooze and View
+  // details — rather than the row's inline split button the standard list carries.
+  await panel.locator('.hk-card-minimal').first().click();
+  await expect(page.locator('ha-dialog[open]')).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/59c-panel-task-minimal-actions.png`, fullPage: true });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('ha-dialog[open]')).toHaveCount(0);
+
+  // Restore the standard layout: every shot below (and the whole phone block after
+  // it) assumes the row list.
+  await setMinimalLayout(page, false);
+  await openPanel(page);
+  await expect(panel.locator('.hk-card-minimal')).toHaveCount(0);
+
   // 50-53. The phone layout, which is different enough from the desktop one that the
   // shots above document none of it: the tabs are along the bottom, Add floats, and
   // Settings opens on an index rather than six expanded sections. Asserted in
@@ -1603,6 +1638,17 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   await expect(panel.locator('.hk-bottombar')).toBeVisible();
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/52-panel-mobile-tasks.png` });
+
+  // 59d. The minimal layout on a phone: still 2 equal-width columns, not 1 — the
+  // cards are small enough that a single column would waste the screen.
+  await setMinimalLayout(page, true);
+  await openPanel(page);
+  await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}/59d-panel-mobile-task-minimal-grid.png` });
+  await setMinimalLayout(page, false);
+  await openPanel(page);
+  await expect(panel.locator('.hk-card-minimal')).toHaveCount(0);
 
   // 57c. The text filter on a phone. Below 700px the search chip takes a row of its
   // own under the wrapped scope pills, and its field grows to the width instead of

@@ -375,7 +375,7 @@ export function renderQuickActions(p: PanelHost, host: HTMLElement): void {
   const { dialog, body, footer, mount } = makeDialog(task.name, () => {
     if (p._quickActions.open) closeQuickActions(p);
   });
-  body.className = 'hk-quick-actions';
+  body.classList.add('hk-quick-actions');
 
   const row = (icon: string, label: string, onClick: () => void): void => {
     const btn = document.createElement('button');

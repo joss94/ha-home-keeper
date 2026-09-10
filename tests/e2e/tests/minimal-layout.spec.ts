@@ -43,7 +43,7 @@ test.describe('Home Keeper panel — minimal task layout', () => {
       .toBe(true);
 
     await panel.locator('#tab-tasks').click();
-    await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+    await expect(panel.locator('.hk-minimal-grid').first()).toBeVisible();
     await expect(panel.locator('.hk-card-minimal').first()).toBeVisible();
     await expect(panel.locator('#hk-list .hk-card-row')).toHaveCount(0);
     // Name and status only — no chips, no meta line, no inline button.
@@ -54,17 +54,28 @@ test.describe('Home Keeper panel — minimal task layout', () => {
   });
 
   test('a monitored task has no Done row in the quick-actions popup', async ({ page }) => {
+    // setMinimalLayout reaches through the live `hass`, which needs the panel
+    // (or any HA page) already loaded once — a brand-new page has no
+    // `home-assistant` element yet, so open it first.
+    await openPanel(page);
     await setMinimalLayout(page, true);
     await openPanel(page);
     const panel = page.locator('home-keeper-panel').first();
     // Renew car registration: a completed one-off, dormant like a monitored task —
     // nothing left to complete, so Done (and Skip/Snooze, which need a due date)
-    // are all absent, leaving only View details.
+    // are all absent, leaving only View details. Completed is collapsed by
+    // default, so expand it first.
+    const completed = panel.locator('details.hk-group[data-group-key="status:completed"]');
+    await expect(completed).toBeVisible();
+    await completed.locator('summary').click();
     const card = panel.locator(`.hk-card-minimal[data-id="${TASK.carRegistration}"]`);
     await expect(card).toBeVisible();
     await card.click();
     const dialog = page.locator('ha-dialog[open]').first();
-    await expect(dialog).toBeVisible();
+    // Not `expect(dialog).toBeVisible()`: the `ha-dialog` host itself is a zero-size
+    // wrapper (its content renders through an internal, slotted `wa-dialog`), so
+    // every dialog check in this codebase asserts on a descendant instead.
+    await expect(dialog).toHaveAttribute('heading', 'Renew car registration');
     await expect(dialog.getByRole('button', { name: 'View details' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Skip', exact: true })).toHaveCount(0);
@@ -80,6 +91,9 @@ test.describe('Home Keeper panel — minimal task layout', () => {
       due: '2026-01-02T09:00:00-04:00',
     });
     try {
+      // See the note above: `home-assistant` has to exist before `setMinimalLayout`
+      // can reach its `hass`, so open the panel once before setting it.
+      await openPanel(page);
       await setMinimalLayout(page, true);
       await openPanel(page);
       const panel = page.locator('home-keeper-panel').first();
@@ -87,13 +101,26 @@ test.describe('Home Keeper panel — minimal task layout', () => {
       await expect(card).toBeVisible();
 
       // Press-and-hold opens the task's own page — same page a click opens on the
-      // standard list — rather than the popup.
-      const box = (await card.boundingBox())!;
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.waitForTimeout(700);
-      await page.mouse.up();
-      await expect(panel.locator('.hk-detail-row', { hasText: 'Next due' })).toBeVisible();
+      // standard list — rather than the popup. Retried like `openRow` in shots.ts:
+      // a live entity update mid-hold can re-render the grid and cancel the
+      // pointer capture (a real pointercancel, same class of race that helper
+      // exists for), so one held press can land on nothing.
+      const detailRow = panel.locator('.hk-detail-row', { hasText: 'Next due' });
+      await expect
+        .poll(
+          async () => {
+            if (await detailRow.isVisible().catch(() => false)) return true;
+            const box = await card.boundingBox().catch(() => null);
+            if (!box) return false;
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.down();
+            await page.waitForTimeout(700);
+            await page.mouse.up();
+            return detailRow.isVisible().catch(() => false);
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(true);
       await expect(page.locator('ha-dialog[open]')).toHaveCount(0);
       await panel.locator('#back-btn').click();
       await expect(card).toBeVisible();
@@ -101,16 +128,16 @@ test.describe('Home Keeper panel — minimal task layout', () => {
       // A plain tap opens the quick-actions popup instead.
       await card.click();
       const dialog = page.locator('ha-dialog[open]').first();
-      await expect(dialog).toBeVisible();
       await expect(dialog).toHaveAttribute('heading', 'E2E minimal-grid scratch task');
       await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: 'View details' })).toBeVisible();
 
-      // Mark done actually completes it: the popup closes and the task drops out
-      // of the active grid (a completed one-off has nothing left to do).
+      // Mark done actually completes it: the popup closes and the task moves into
+      // the (collapsed-by-default) Completed section — still in the DOM, same as
+      // the standard list, just no longer visible in the active groups.
       await dialog.getByRole('button', { name: 'Done', exact: true }).click();
       await expect(page.locator('ha-dialog[open]')).toHaveCount(0);
-      await expect(card).toHaveCount(0, { timeout: 10_000 });
+      await expect(card).not.toBeVisible({ timeout: 10_000 });
     } finally {
       await deleteTask(id);
     }

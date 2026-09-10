@@ -203,11 +203,14 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
   //     quick actions, press and hold for details.
   await setMinimalLayout(page, true);
   await openPanel(page);
-  await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+  await expect(panel.locator('.hk-minimal-grid').first()).toBeVisible();
   await page.waitForTimeout(BEAT * 2);
   const minimalCard = panel.locator('.hk-card-minimal').first();
   await minimalCard.click();
-  await expect(page.locator('ha-dialog[open]')).toBeVisible();
+  // Not `expect(dialog).toBeVisible()`: the `ha-dialog` host is a zero-size
+  // wrapper (its content renders through an internal, slotted `wa-dialog`), so
+  // every dialog check in this file asserts on a descendant instead.
+  await expect(page.locator('ha-dialog[open] .hk-quick-row').first()).toBeVisible();
   await page.waitForTimeout(BEAT * 2);
   await page.keyboard.press('Escape');
   await expect(page.locator('ha-dialog[open]')).toHaveCount(0);

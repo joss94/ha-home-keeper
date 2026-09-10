@@ -113,6 +113,12 @@ export async function todoSummaries(): Promise<string[]> {
  * must always turn it back off — this is what both do, without going through
  * the Settings UI (which would fail if the panel has since navigated away from
  * the switch).
+ *
+ * Requires a page that has already loaded some HA view at least once — `hass`
+ * lives on the `<home-assistant>` element, which a brand-new blank page has not
+ * mounted yet. Throws rather than silently no-op-ing if it isn't there, since a
+ * swallowed failure here means the layout was never actually toggled and every
+ * assertion after it fails somewhere confusing instead.
  */
 export async function setMinimalLayout(page: Page, value: boolean): Promise<void> {
   await page.evaluate(async (v) => {
@@ -121,7 +127,8 @@ export async function setMinimalLayout(page: Page, value: boolean): Promise<void
         hass?: { callWS: (m: unknown) => Promise<unknown> };
       }
     )?.hass;
-    await hass?.callWS({ type: 'frontend/set_user_data', key: 'home_keeper_minimal_layout', value: v });
+    if (!hass) throw new Error('setMinimalLayout: no `hass` yet — open an HA page first');
+    await hass.callWS({ type: 'frontend/set_user_data', key: 'home_keeper_minimal_layout', value: v });
   }, value);
 }
 

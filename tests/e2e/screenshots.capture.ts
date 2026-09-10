@@ -1601,14 +1601,17 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   // 59b. The task dashboard in the minimal layout: a dense, equal-width 2-column
   // grid — name and status only, nothing else on the card.
   await panel.locator('#tab-tasks').click();
-  await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+  await expect(panel.locator('.hk-minimal-grid').first()).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${OUT}/59b-panel-task-minimal-grid.png`, fullPage: true });
 
   // 59c. A tap opens the quick-actions popup — Done, Skip, Snooze and View
   // details — rather than the row's inline split button the standard list carries.
   await panel.locator('.hk-card-minimal').first().click();
-  await expect(page.locator('ha-dialog[open]')).toBeVisible();
+  // Not `expect(dialog).toBeVisible()`: the `ha-dialog` host is a zero-size
+  // wrapper (its content renders through an internal, slotted `wa-dialog`), so
+  // every dialog check in this file asserts on a descendant instead.
+  await expect(page.locator('ha-dialog[open] .hk-quick-row').first()).toBeVisible();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/59c-panel-task-minimal-actions.png`, fullPage: true });
   await page.keyboard.press('Escape');
@@ -1643,7 +1646,7 @@ test('capture Home Keeper panel + usage screenshots', async ({ page }) => {
   // cards are small enough that a single column would waste the screen.
   await setMinimalLayout(page, true);
   await openPanel(page);
-  await expect(panel.locator('.hk-minimal-grid')).toBeVisible();
+  await expect(panel.locator('.hk-minimal-grid').first()).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${OUT}/59d-panel-mobile-task-minimal-grid.png` });
   await setMinimalLayout(page, false);

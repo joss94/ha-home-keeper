@@ -19,6 +19,12 @@ versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
   since a notified task is already overdue or due soon. Turn it off in
   **Settings → Skip, snooze & pull forward**.
 
+### Fixed
+
+- **Notification triggers.** A notification now states which tasks its profile
+  selects. The 2 automatic switches are grouped as Triggers, which set the moment a
+  notification is sent rather than its contents. (Fixes #313)
+
 ## [0.22.0] - 2026-09-08
 
 ### Added

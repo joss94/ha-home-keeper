@@ -33,6 +33,20 @@
   buttons the feature hides, what it rewrites internally, which surfaces it touches,
   which fields it added. That is `README.md` material. When trimming a big feature
   loses something real, split it into 2 bullets rather than growing 1.
+- **A feature bullet's bold lead links its documentation.** Every `### Added` bullet
+  writes the lead as a Markdown link to the page documenting the feature, e.g.
+  `**[Import and export](https://prestomation.github.io/ha-home-keeper/docs/guide/import-export).**`.
+  It costs nothing against the three-sentence budget, and `summarize()` quotes the
+  lead into the issue reporter's comment, so the reporter gets the docs link too. Use
+  the absolute site URL — the bullet is read on GitHub and in a release body. A
+  user-guide page is `.../docs/guide/<slug>`, where the slug is the section's
+  `USER_SECTIONS` entry in `website/scripts/doc-map.mjs`; a deeper anchor adds the
+  heading slug. `### Fixed` and `### Changed` bullets may link the same way and do not
+  have to. A link to a page the release itself adds resolves only when a **stable**
+  ships — `deploy-docs` in `release.yml` is gated on `prerelease == 'false'`, so a beta
+  never republishes the site and the bullet's link 404s for beta testers until then.
+  Write it in the feature PR regardless; that is the cost of pinning the site to the
+  latest stable. Nothing validates these URLs, so check the shape against a live page.
 - **Credit an outside contributor in the bullet for their change.** End the bullet
   with `(Thanks @user!)`, after `(Fixes #N)` if the bullet has one. The credit does
   not count against the three-sentence budget. An outside contributor is anyone

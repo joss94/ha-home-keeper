@@ -36,6 +36,45 @@ the GitHub release automatically. No manual `git tag` step.
 3. **HACS picks it up** via `hacs.json` (`zip_release: true`, `filename:
    home_keeper.zip`).
 
+### Link the docs from every feature bullet
+
+An `### Added` bullet writes its bold lead as a Markdown link to the page that
+documents the feature:
+
+```markdown
+- **[Import and export](https://prestomation.github.io/ha-home-keeper/docs/guide/import-export).**
+  Settings has a new *Import and export* card that saves every task and appliance to
+  one YAML file, and reads one back.
+```
+
+- **Why the lead.** `summarize()` in `ci/release-issues.py` quotes only the bold lead
+  into the comment the issue reporter gets, so a linked lead carries the docs link
+  into that comment too. A link also costs nothing against the three-sentence bullet
+  budget.
+- **Use the absolute site URL.** The bullet is read on GitHub and in the release body,
+  not only in the repository, so a relative path does not resolve.
+- **Finding a User Guide URL.** The page is
+  `https://prestomation.github.io/ha-home-keeper/docs/guide/<slug>`, where `<slug>` is
+  the README section's `USER_SECTIONS` entry in `website/scripts/doc-map.mjs`. A
+  deeper anchor is that page plus the heading slug.
+- **Finding a Developer Guide URL.** The route is that file's `DOC_ROUTES` value in
+  `website/scripts/doc-map.mjs` (`docs/INTEGRATING.md` → `/developer/integrating`),
+  appended to `https://prestomation.github.io/ha-home-keeper`. The generated API
+  reference is `GENERATED_DEV_PAGES` instead, which carries its `route` directly.
+- **A link to a page the release itself adds resolves only when a _stable_ ships.**
+  `deploy-docs` in `release.yml` is gated on `prerelease == 'false'`, so a beta never
+  republishes the site. Write the link in the feature PR anyway — that is the moment
+  the author knows which page documents the feature, and the stable cut then rolls the
+  bullet up unchanged — but know what it costs: the bullet ships in a `## [X.Y.ZbN]`
+  section whose link 404s for every beta tester until the stable publishes. That is the
+  price of pinning the site to the latest stable so nobody reads docs for an unreleased
+  feature, and it is a deliberate trade, not an oversight. Prefer an existing page when
+  one already covers the feature.
+- **Nothing validates these URLs.** A typo 404s forever, and no gate catches it. Check
+  the shape against a page that is already live before you commit the bullet.
+- `### Fixed` and `### Changed` bullets may link the same way when a page covers the
+  change. They do not have to.
+
 ## Issue notifications
 
 An issue closes when its fix **ships**, not when its PR merges. A merged PR is not in

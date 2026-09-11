@@ -68,6 +68,28 @@
   because `(#N)` is also the squash-merge PR number and the two can't be told apart.
   The job posts a CI warning naming any issue a shipped commit referenced that the
   section forgot.
+- **A feature bullet's bold lead links its documentation.** Every `### Added` bullet
+  writes the lead as a Markdown link to the page that documents the feature, e.g.
+  `**[Import and export](https://prestomation.github.io/ha-home-keeper/docs/guide/import-export).**`.
+  A link costs nothing against the three-sentence budget, and `summarize()` in
+  `ci/release-issues.py` quotes the bold lead into the issue reporter's comment, so
+  the reporter gets a working link to the docs as well. Use the absolute site URL,
+  because the bullet is read on GitHub and in a release body, never only in the
+  repository. A user-guide page is `https://prestomation.github.io/ha-home-keeper/docs/guide/<slug>`
+  — the slug is the section's `USER_SECTIONS` entry in `website/scripts/doc-map.mjs`
+  — and a deeper anchor is that page plus the heading slug. Link the nearest page that
+  says what the feature does, not the repository README and not a `docs/*_PLAN.md`.
+  A `### Fixed` or `### Changed` bullet may link the same way when a page covers it,
+  and does not have to. **A link to a page the release itself adds resolves only when a
+  _stable_ ships**, because `deploy-docs` in `release.yml` is gated on
+  `prerelease == 'false'` and a beta never republishes the site. Write the link in the
+  feature PR anyway, since that is when the author knows which page documents the
+  feature and the stable cut rolls the bullet up unchanged — but the bullet ships first
+  in a `## [X.Y.ZbN]` section whose link 404s for beta testers until the stable
+  publishes. That is the cost of pinning the site to the latest stable, not an
+  oversight. Prefer an existing page when one already covers the feature, and check the
+  shape of a URL that is already live, because nothing validates these links and a typo
+  404s forever.
 - **Credit an outside contributor in the bullet for their change.** End the bullet
   with `(Thanks @user!)`, after `(Fixes #N)` if the bullet has one. The credit does
   not count against the three-sentence budget. An outside contributor is anyone

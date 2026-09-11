@@ -10,6 +10,7 @@ import {
   type HaFormElement,
 } from './forms';
 import { setLanguage, t } from './i18n';
+import { MAX_IMPORT_BYTES, MAX_IMPORT_WS_BYTES, importFitsWebsocket } from './limits';
 import {
   createPreview,
   ensureMarkdown,
@@ -34,7 +35,7 @@ import {
 } from './panel-dialogs';
 import type { PanelHost } from './panel-host';
 import { REQUIRED_COMPONENTS } from './panel-icons';
-import { assetsList, tasksList, wireLists } from './panel-lists';
+import { assetsList, renderQuickActions, tasksList, wireLists } from './panel-lists';
 import {
   settingsBackbar,
   settingsIndex,
@@ -61,7 +62,9 @@ import {
   type GroupBy,
   type MoveCompletionDialogState,
   type NoteTarget,
+  type QuickActionsState,
   type TaskFilter,
+  type TransferState,
 } from './panel-types';
 import { setAssetError } from './panel-upload';
 import type {
@@ -74,6 +77,7 @@ import type {
   HomeKeeperOptions,
   ManagedBy,
   PanelInfo,
+  PortableDocument,
   Profile,
   Task,
 } from './types';
@@ -139,6 +143,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
   };
   _snooze: SnoozeState = emptySnoozeState();
   _skip: SkipState = emptySkipState();
+  _quickActions: QuickActionsState = { open: false, task: null };
   // The open deferral menu and the document handlers dismissing it. One at a time:
   // opening a second closes the first, so this never holds a stale pair.
   private readonly _deferMenus = new DeferMenus({
@@ -194,6 +199,13 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
   _declarativePresets: DeclarativeCompanionPreset[] | null = null;
   _installedIntegrations: string[] | null = null;
   _declDialog: DeclarativeDialogState = { open: false, kind: 'picker', draft: null };
+  _transfer: TransferState = {
+    text: '',
+    report: null,
+    busy: false,
+    error: '',
+    filename: '',
+  };
   // HA tag-registry entries as picker options, for the task form's tag field and
   // the tag chip. Best-effort: an empty list still leaves a typable combo box.
   _tags: { value: string; label: string }[] = [];
@@ -242,6 +254,10 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
   // Whether the current user has dismissed the first-run intro banner — loaded from
   // HA's per-user frontend data store in `_reload` (see `_introCard`).
   _introDismissed = false;
+  // Whether the current user has switched the task dashboard to the minimal
+  // 2-column grid — same per-user store as `_introDismissed`, but read/write (see
+  // `_setMinimalLayout`) rather than write-once.
+  _minimalLayout = false;
   // In-flight refresh, shared by overlapping callers. Both `set hass` (first update)
   // and `_init` gate on `!this._loaded`, and `_loaded` only flips true after the awaited
   // reload — so without coalescing they can pass the check and run two concurrent full
@@ -613,6 +629,21 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     if (!this._applyQuery()) this._render();
   }
 
+  /** Switch the task dashboard between the standard list and the minimal 2-column
+   *  grid. Optimistic: flips the state and re-renders immediately, then persists
+   *  best-effort — a failed save just means the choice doesn't follow to another
+   *  device, not that it silently reverts here. */
+  _setMinimalLayout(value: boolean): void {
+    if (this._minimalLayout === value) return;
+    this._minimalLayout = value;
+    this._render();
+    if (this._hass) {
+      void api.setMinimalLayout(this._hass, value).catch(() => {
+        // best-effort — see above.
+      });
+    }
+  }
+
   /** Pick a saved Profile to drive the task-list filter (''/none clears it). */
   _setProfile(value: string): void {
     if (this._profile === value) return;
@@ -736,6 +767,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
         companions,
         declarativeCompanions,
         introDismissed,
+        minimalLayout,
         tags,
       ] = await Promise.all([
         api.getTasks(this._hass),
@@ -749,6 +781,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
           [] as DeclarativeCompanion[],
         ),
         this._soft(api.getIntroDismissed(this._hass), false),
+        this._soft(api.getMinimalLayout(this._hass), this._minimalLayout),
         // Best-effort: the tag registry is a convenience for the picker and the
         // chip label, never a precondition for the panel loading.
         this._soft(api.getTags(this._hass), [] as { value: string; label: string }[]),
@@ -763,6 +796,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
       this._companions = companions ?? [];
       this._declarativeCompanions = declarativeCompanions ?? [];
       this._introDismissed = introDismissed;
+      this._minimalLayout = minimalLayout;
       this._tags = tags;
       // Drop a remembered Profile filter that no longer exists (deleted since), so the
       // Tasks-tab dropdown and the stored id can't disagree.
@@ -1342,6 +1376,89 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     }
   }
 
+  /**
+   * Save every task and appliance as one YAML file.
+   *
+   * The same document `_runImport` reads, so this file is also the worked example of
+   * the format — which is what makes "show an assistant your export and ask for
+   * twelve more like it" a complete instruction. Its first line names the published
+   * JSON Schema, so an editor checks it as you edit it.
+   */
+  async _exportData(): Promise<void> {
+    if (!this._hass) return;
+    try {
+      const { yaml } = await api.exportData(this._hass);
+      const stamp = new Date().toISOString().slice(0, 10);
+      this._downloadFile(`home-keeper-${stamp}.yaml`, yaml, 'application/yaml');
+    } catch (err) {
+      console.error('home-keeper: data export failed', err);
+      toast(this, t('error.exportFailed'));
+    }
+  }
+
+  /** Check the document and show what an import would do, writing nothing. */
+  async _previewImport(): Promise<void> {
+    await this._transferCall(true);
+  }
+
+  /** Apply the document the preview approved. */
+  async _runImport(): Promise<void> {
+    await this._transferCall(false);
+    if (this._transfer.report?.ok && !this._transfer.report.dry_run) {
+      // An import rewrites tasks and appliances wholesale, so re-read rather than
+      // patching: the panel's copy of both lists is now the stale one. `_reload` is
+      // the right door because the import triggers a config-entry reload on its way
+      // out, and `_reload` already knows to wait that out rather than treating the
+      // `not_loaded` error as an answer.
+      await this._reload();
+      this._render();
+    }
+  }
+
+  /**
+   * Preview and import are one call with `dryRun` flipped, so the preview cannot
+   * describe anything but what the import will actually do.
+   */
+  private async _transferCall(dryRun: boolean): Promise<void> {
+    if (!this._hass || this._transfer.busy) return;
+    this._transfer.error = '';
+    // Refuse an oversized document here rather than sending it. Home Assistant does
+    // not raise on a frame past aiohttp's 4 MiB default — it closes the connection
+    // ("Decompressed message exceeds size limit"), so the panel loses its link to
+    // Home Assistant and the only thing left to show is a generic failure. Pressing
+    // the button again drops the connection again. The backend's own 8 MiB ceiling
+    // and its "split the migration" message sit on the far side of a socket the
+    // document cannot cross, so this is the one place a useful answer can be given.
+    if (!importFitsWebsocket(this._transfer.text)) {
+      this._transfer.report = null;
+      this._transfer.error = t('transfer.tooLarge', {
+        mb: MAX_IMPORT_WS_BYTES / (1024 * 1024),
+        // The service's ceiling, which is the larger one the message points at.
+        max: MAX_IMPORT_BYTES / (1024 * 1024),
+      });
+      this._render();
+      return;
+    }
+    this._transfer.busy = true;
+    this._render();
+    try {
+      // The pasted text goes over as text. The backend reads it, so there is one
+      // parser rather than a second one here that could accept a slightly different
+      // dialect — and a syntax error comes back as an ordinary problem row naming the
+      // line and column, which a parse in the browser could not have told us.
+      this._transfer.report = await api.importData(this._hass, this._transfer.text, {
+        dryRun,
+      });
+    } catch (err) {
+      console.error('home-keeper: import failed', err);
+      this._transfer.report = null;
+      this._transfer.error = t('error.actionFailed');
+    } finally {
+      this._transfer.busy = false;
+      this._render();
+    }
+  }
+
   /** Coalesce rapid calls under *key*, running only the trailing one after *ms*. */
   _debounce(key: string, fn: () => void, ms = 600): void {
     const prev = this._persistTimers[key];
@@ -1524,6 +1641,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
             <div id="hk-profiles-host"></div>
             <div id="hk-notifications-host"></div>
             <div id="hk-companions-host"></div>
+            <div id="hk-transfer-host"></div>
           </div>
         </div>`;
     } else {
@@ -1825,6 +1943,7 @@ export class HomeKeeperPanel extends HTMLElement implements PanelHost {
     if (dialogHost && this._moveCompletion.open) renderMoveCompletionDialog(this, dialogHost);
     if (dialogHost && this._snooze.open) renderSnooze(this, dialogHost);
     if (dialogHost && this._skip.open) renderSkip(this, dialogHost);
+    if (dialogHost && this._quickActions.open) renderQuickActions(this, dialogHost);
     if (dialogHost && this._declDialog.open) renderDeclarativeDialog(this, dialogHost);
     // renderConfirmDeleteDialog appends directly to document.body (not shadow root).
 

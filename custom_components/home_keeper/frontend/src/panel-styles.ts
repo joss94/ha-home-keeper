@@ -413,6 +413,15 @@ export const STYLES = `
   .hk-settings-value {
     color: var(--hk-ink); font-size: 0.88rem; margin: 2px 0 8px;
   }
+  /* The Minimal layout switch, appended to the General card beside its ha-form —
+     a per-user preference, not one of the form's autosaving fields. */
+  .hk-switch-row {
+    display: flex; align-items: center; gap: 16px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--hk-line);
+  }
+  .hk-switch-row-text { flex: 1; min-width: 0; }
+  .hk-switch-row-label { font-size: 0.95rem; font-weight: 500; }
+  .hk-switch-row-help { font-size: 0.85rem; color: var(--hk-ink-2); margin-top: 2px; }
 
   /* ── Settings: anchor rail beside the sections ─────────────────────────────
      Settings is a long page, and the questions people bring to it ("is the mirror
@@ -520,6 +529,35 @@ export const STYLES = `
     color: var(--secondary-text-color); font-size: 0.9rem; line-height: 1.4; margin-top: 2px;
   }
   .hk-companion-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
+  /* Import and export section (Settings tab). */
+  .hk-transfer-group {
+    font-size: 0.8rem; font-weight: 600; color: var(--secondary-text-color);
+    text-transform: uppercase; letter-spacing: 0.04em; margin: 20px 0 8px;
+    border-top: 1px solid var(--divider-color); padding-top: 16px;
+  }
+  /* Wraps rather than shrinks: below 700px the buttons take a row each and keep
+     their full tap target instead of squeezing onto one line. */
+  .hk-transfer-actions {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;
+  }
+  .hk-transfer-file {
+    color: var(--secondary-text-color); font-size: 0.9rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  #hk-transfer ha-textarea { display: block; width: 100%; margin-top: 12px; }
+  .hk-transfer-report { margin-top: 12px; }
+  .hk-transfer-counts, .hk-transfer-problems {
+    margin: 8px 0 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.5;
+  }
+  .hk-transfer-problems { color: var(--secondary-text-color); }
+  /* An error is why nothing happened; a warning is something the file said that
+     Home Keeper did not read. Different weights, because they need different
+     reactions. */
+  .hk-transfer-problems li.error { color: var(--error-color); }
+  .hk-transfer-problems code {
+    font-size: 0.85em; background: var(--secondary-background-color);
+    padding: 1px 4px; border-radius: 4px;
+  }
   /* Individual collapsible profile/notification items. */
   .hk-item-card {
     border: 1px solid var(--divider-color); border-radius: 8px;
@@ -896,6 +934,41 @@ export const STYLES = `
   ha-card.hk-card.overdue {
     border-left-color: var(--hk-danger);
     --ha-card-border-radius: 0 var(--hk-r-row) var(--hk-r-row) 0;
+  }
+
+  /* ── Minimal task layout ────────────────────────────────────────────────────
+     A Settings toggle that swaps the row list above for this dense, equal-width
+     2-column grid. A card shows only the name and status; Done/Skip/Snooze move
+     into a tap-opened popup instead of living on the card (see panel-lists.ts's
+     taskCardMinimal/renderQuickActions). Two columns at every width, including
+     the phone breakpoint below — the cards are small enough that one column
+     would waste the screen. */
+  .hk-minimal-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  ha-card.hk-card.hk-card-minimal {
+    /* A grid item's default min-width:auto lets a nowrap name's full unbroken
+       width force its column wider than 1fr — this is what keeps both columns
+       genuinely equal regardless of how long a task's name is. */
+    min-width: 0;
+    margin-bottom: 0;
+    border-left: none;
+    padding: 10px 12px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    border: 1px solid transparent;
+    transition: border-color 0.12s ease;
+  }
+  /* A press held past the long-press threshold borders the card, so a finger (or a
+     mouse button) still down gets feedback before the hold resolves to "details". */
+  ha-card.hk-card.hk-card-minimal.hk-pressing { border-color: var(--hk-accent); }
+  .hk-card-minimal .hk-name {
+    font-size: 0.92rem; font-weight: 500; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; margin-bottom: 6px;
+  }
+  .hk-card-minimal .hk-status ha-assist-chip {
+    --ha-assist-chip-container-height: 24px; --md-assist-chip-container-height: 24px;
   }
   /* A task row reads left to right: what it is, what qualifies it, how late it is,
      what to do about it.
@@ -1509,6 +1582,18 @@ export const STYLES = `
   }
   /* Completion-details dialog */
   .hk-completion-body { display: flex; flex-direction: column; gap: 12px; min-width: 320px; }
+
+  /* Minimal grid's quick-actions popup: Mark done / Skip / Snooze / View details,
+     each a full-width row rather than a form — this is a menu, not an edit. */
+  .hk-quick-actions { display: flex; flex-direction: column; gap: 2px; min-width: 280px; }
+  .hk-quick-row {
+    display: flex; align-items: center; gap: 14px; width: 100%;
+    font: inherit; font-size: 0.95rem; color: var(--hk-ink);
+    background: transparent; border: none; border-radius: var(--hk-r-btn);
+    padding: 12px 10px; cursor: pointer; text-align: start; min-height: var(--hk-tap);
+  }
+  .hk-quick-row:hover, .hk-quick-row:focus-visible { background: var(--hk-page); }
+  .hk-quick-row ha-icon { color: var(--hk-ink-2); flex: none; }
   .hk-completion-photo-label { font-weight: 500; font-size: 0.9rem; }
 
   /* ── Phone-width tab bar ───────────────────────────────────────────────────

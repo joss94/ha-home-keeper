@@ -42,6 +42,7 @@ import {
   openPart,
   openSettingsSection,
   openTaskTab,
+  setMinimalLayout,
 } from './tests/helpers';
 import { ASSET, PART, TASK } from './fixture-ids';
 import { DESKTOP, PHONE, Viewport } from './viewports';
@@ -196,6 +197,26 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
   await page.waitForTimeout(BEAT * 3);
   await panel.locator('.hk-search-clear').click();
   await expect(searchBox).toHaveValue('');
+  await page.waitForTimeout(BEAT);
+
+  // 1f. Minimal layout (Settings → General) — a compact 2-column grid, tap for
+  //     quick actions, press and hold for details.
+  await setMinimalLayout(page, true);
+  await openPanel(page);
+  await expect(panel.locator('.hk-minimal-grid').first()).toBeVisible();
+  await page.waitForTimeout(BEAT * 2);
+  const minimalCard = panel.locator('.hk-card-minimal').first();
+  await minimalCard.click();
+  // Not `expect(dialog).toBeVisible()`: the `ha-dialog` host is a zero-size
+  // wrapper (its content renders through an internal, slotted `wa-dialog`), so
+  // every dialog check in this file asserts on a descendant instead.
+  await expect(page.locator('ha-dialog[open] .hk-quick-row').first()).toBeVisible();
+  await page.waitForTimeout(BEAT * 2);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('ha-dialog[open]')).toHaveCount(0);
+  await setMinimalLayout(page, false);
+  await openPanel(page);
+  await expect(panel.locator('.hk-card-minimal')).toHaveCount(0);
   await page.waitForTimeout(BEAT);
 
   // 2. Open a task's detail page — full schedule, notes, completion history, and
@@ -875,6 +896,23 @@ async function desktopTour(page: Page, panel: Locator): Promise<void> {
     await page.waitForTimeout(BEAT * 2);
   }
 
+  // 7a. Import and export — the last stop on the rail. A document goes into the box
+  //     and Preview answers before anything is written: what it would add, how much
+  //     history rides along, and anything wrong with the file.
+  await panel.locator('.hk-rail-link[data-section="transfer"]').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await panel.locator('#hk-transfer').scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  await page.waitForTimeout(BEAT * 3);
+
   // 7b. Notifications, opened rather than passed. How a notification lands on the
   //     phone is set here — the channel it arrives on and how loudly — and Test
   //     sends it now, so the answer comes back on the phone instead of at the next
@@ -1011,6 +1049,20 @@ async function phoneTour(page: Page, panel: Locator): Promise<void> {
   await panel.locator('#settings-back').click();
   await expect(panel.locator('.hk-index-row').first()).toBeVisible();
   await page.waitForTimeout(BEAT * 2);
+
+  //    Then Import and export: a document pasted in, and the preview that says what
+  //    importing it would change before anything is written.
+  await panel.locator('.hk-index-row[data-section="transfer"]').click();
+  await expect(panel.locator('#hk-transfer')).toBeVisible();
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-text').evaluate((el: HTMLElement, value: string) => {
+    (el as HTMLTextAreaElement & { value: string }).value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, `home_keeper:\n  format: 1\ntasks:\n  - external_id: dishwasher-filter\n    name: Clean the dishwasher filter\n    interval: 1\n    unit: months\n    history:\n      - completed_at: 2026-05-02\n`);
+  await page.waitForTimeout(BEAT * 2);
+  await panel.locator('#transfer-preview').click();
+  await expect(panel.locator('.hk-transfer-counts')).toBeVisible();
+  await page.waitForTimeout(BEAT * 3);
 }
 
 const TOURS: Tour[] = [

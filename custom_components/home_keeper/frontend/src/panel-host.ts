@@ -36,7 +36,9 @@ import type {
   GroupBy,
   MoveCompletionDialogState,
   NoteTarget,
+  QuickActionsState,
   TaskFilter,
+  TransferState,
 } from './panel-types';
 import type {
   Asset,
@@ -141,6 +143,15 @@ export interface PanelHost extends HTMLElement {
   _entryDomains: Record<string, string>;
   /** Download the appliance inventory (the appliance list's Export action). */
   _exportInventory(): Promise<void>;
+  /** Save every task and appliance as one JSON file (Settings -> Import and export). */
+  _exportData(): Promise<void>;
+  /** The import card's state: the pasted or picked document text, the last preview,
+   *  and whether a call is in flight. */
+  _transfer: TransferState;
+  /** Check the pasted document and show what an import would do, writing nothing. */
+  _previewImport(): Promise<void>;
+  /** Apply the document the preview approved. */
+  _runImport(): Promise<void>;
   /** Which scope pill the task list is filtered to. */
   _filter: TaskFilter;
   /** Focus *el* without letting a not-yet-upgraded HA element abort the render;
@@ -178,6 +189,9 @@ export interface PanelHost extends HTMLElement {
       computeHelper?: (s: { name: string }) => string;
     },
   ): HaFormElement;
+  /** Whether the task dashboard shows the minimal 2-column grid instead of the
+   *  standard list (see `_setMinimalLayout`). */
+  _minimalLayout: boolean;
   /** Navigate within the panel; `replace` for a lateral move that Back should skip. */
   _navigate(loc: PanelLocation, replace?: boolean): void;
   /** A detail page's Notes card contents — rendered Markdown, or the inline editor. */
@@ -218,6 +232,8 @@ export interface PanelHost extends HTMLElement {
   /** The text both lists filter on ('' = no text filter). Session-only: it is not
    *  persisted, so every panel load starts with the whole list. */
   _query: string;
+  /** The minimal task grid's quick-actions popup state. */
+  _quickActions: QuickActionsState;
   /** Reload every collection from the backend and re-render. */
   _refresh(): Promise<void>;
   /** Reload every collection from the backend *without* re-rendering — for a save that
@@ -239,6 +255,8 @@ export interface PanelHost extends HTMLElement {
   _setAssetView(value: AssetView): void;
   _setFilter(value: TaskFilter): void;
   _setGroupBy(value: GroupBy): void;
+  /** Switch the task dashboard between the standard list and the minimal grid. */
+  _setMinimalLayout(value: boolean): void;
   _setProfile(value: string): void;
   /** Set the text filter. Patches the list in place instead of re-rendering, because
    *  a rebuilt shadow tree replaces the box the reader is typing in. */

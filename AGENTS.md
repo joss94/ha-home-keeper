@@ -68,6 +68,28 @@
   because `(#N)` is also the squash-merge PR number and the two can't be told apart.
   The job posts a CI warning naming any issue a shipped commit referenced that the
   section forgot.
+- **A feature bullet's bold lead links its documentation.** Every `### Added` bullet
+  writes the lead as a Markdown link to the page that documents the feature, e.g.
+  `**[Import and export](https://prestomation.github.io/ha-home-keeper/docs/guide/import-export).**`.
+  A link costs nothing against the three-sentence budget, and `summarize()` in
+  `ci/release-issues.py` quotes the bold lead into the issue reporter's comment, so
+  the reporter gets a working link to the docs as well. Use the absolute site URL,
+  because the bullet is read on GitHub and in a release body, never only in the
+  repository. A user-guide page is `https://prestomation.github.io/ha-home-keeper/docs/guide/<slug>`
+  — the slug is the section's `USER_SECTIONS` entry in `website/scripts/doc-map.mjs`
+  — and a deeper anchor is that page plus the heading slug. Link the nearest page that
+  says what the feature does, not the repository README and not a `docs/*_PLAN.md`.
+  A `### Fixed` or `### Changed` bullet may link the same way when a page covers it,
+  and does not have to. **A link to a page the release itself adds resolves only when a
+  _stable_ ships**, because `deploy-docs` in `release.yml` is gated on
+  `prerelease == 'false'` and a beta never republishes the site. Write the link in the
+  feature PR anyway, since that is when the author knows which page documents the
+  feature and the stable cut rolls the bullet up unchanged — but the bullet ships first
+  in a `## [X.Y.ZbN]` section whose link 404s for beta testers until the stable
+  publishes. That is the cost of pinning the site to the latest stable, not an
+  oversight. Prefer an existing page when one already covers the feature, and check the
+  shape of a URL that is already live, because nothing validates these links and a typo
+  404s forever.
 - **Credit an outside contributor in the bullet for their change.** End the bullet
   with `(Thanks @user!)`, after `(Fixes #N)` if the bullet has one. The credit does
   not count against the three-sentence budget. An outside contributor is anyone
@@ -103,16 +125,13 @@
   try the feature via HACS *before* merge. The build is ephemeral and auto-deletes
   when the PR closes (see RELEASE.md → "Preview releases"). Bug-fix-only /
   developer-only PRs don't need it.
-- **Always have a Sonnet 4.5 subagent write user-facing text.** Any prose a *user* reads —
-  `CHANGELOG.md` bullets, `README.md`, the canonical `docs/*.md`, `strings.json`,
-  `services.yaml` descriptions, the frontend locale — is drafted by a subagent spawned
-  with `model: sonnet`, not written inline. Give it the diff, the surrounding section for
-  voice, and the house rules it has to satisfy (the STE100 rules in
-  `.amazonq/rules/writing-style.md`, the three-sentence CHANGELOG budget, the
-  `(Fixes #N)` placement, the vale AI-tells style), then review what comes back and edit
-  it yourself before committing — the subagent drafts, you are still responsible for what
-  ships. Commit messages, PR bodies and code comments are *not* user-facing text and stay
-  inline.
+- **Know which text a user reads, and hold it to the house rules.** `CHANGELOG.md`
+  bullets, `README.md`, the canonical `docs/*.md`, `strings.json`, `services.yaml`
+  descriptions and the frontend locale are all read by users, so each one has to
+  satisfy the STE100 rules in `.amazonq/rules/writing-style.md`, the three-sentence
+  CHANGELOG budget, the `(Fixes #N)` placement, and the vale AI-tells style. Read the
+  surrounding section for voice before you add to it. Commit messages, PR bodies and
+  code comments are *not* user-facing text and are not held to this.
 - **A plan starts with the CHANGELOG entry it will ship.** Write the proposed bullet
   first, at the top of the plan, before the design and the file list. One bullet is the
   whole change in 3 sentences, so a bullet that will not come out cleanly is telling you
@@ -125,10 +144,67 @@
   desktop **and** phone width, with the real markup rather than a sketch, so the choice is
   made against what will ship. A change with one obvious rendering does not need this.
 - **Always run tests locally before pushing.** Never use CI as the test runner.
-  - Pure-logic unit tests need only `pip install pytest PyYAML`: `pytest tests/unit -v`.
-    (`PyYAML` is for the API-surface gate below, which reads `services.yaml`; without
-    it those few tests skip and the rest still run.)
+  - Pure-logic unit tests need only
+    `pip install pytest PyYAML Babel hypothesis jsonschema`: `pytest tests/unit -v`.
+    Each of the last 4 covers one group of tests and each one skips cleanly on its own:
+    `PyYAML` for the API-surface gate (which reads `services.yaml`) and for the
+    import/export document, which `transfer.py` writes and reads; `Babel` for the
+    locale checks; `hypothesis` for the property-based tests below; `jsonschema` for
+    the published-schema gate.
+  - **A missing dependency fails the run; it never skips it.** Every package
+    `requirements-test.txt` names is imported plainly, so a missing one is an
+    ImportError at collection. A skip reads as "this lane does not cover that", so a
+    broken environment looked the same as a deliberate exclusion: #309 shipped red
+    with `hypothesis` missing and two files silent. `importorskip` stays for
+    `homeassistant` and `voluptuous`, which a bare install really does not have.
+    `test_generate_schema.py` imports `jsonschema` and `voluptuous_openapi` plainly
+    too, after its `HK_SCHEMA_GATE` skip: the gate says the lane opted in.
+  - **The published-schema gate runs only where `HK_SCHEMA_GATE` is set**, which is
+    `lint.yml`'s **mypy** job. `tests/unit/test_generate_schema.py` builds the schema
+    from the integration's own voluptuous service schemas, so it needs a Home Assistant
+    new enough to import the integration — and "is Home Assistant importable?" is the
+    wrong question. `ci/install-deps.sh` installs
+    `pytest-homeassistant-custom-component`, so it *is* importable in the unit lane, on
+    whatever release pip backtracked to for that job's Python; `LOVELACE_DATA` was gone
+    from it and the gate failed for a reason that had nothing to do with the schema.
+    That is the #199 trap in a new place, so the opt-in is explicit and the mypy job
+    greps the output to prove the tests really ran rather than skipped. Run it locally
+    the same way: `pip install homeassistant voluptuous-openapi jsonschema` on a Python
+    at or above HA's floor, then
+    `HK_SCHEMA_GATE=1 pytest tests/unit/test_generate_schema.py`.
+  - **Neither `jsonschema` nor `voluptuous-openapi` is in `requirements-test.txt`.**
+    `voluptuous-openapi` pulls `voluptuous` in, and `voluptuous` is what decides
+    whether `test_config_flow.py` and its neighbours skip — installing it for every
+    lane silently changes what the suite covers. `ci/install-schema-deps.sh` installs
+    both in the one job that needs them, under Home Assistant's own
+    `package_constraints.txt`, because which `voluptuous-openapi` works is Home
+    Assistant's choice rather than ours.
   - Full unit suite uses `pip install pytest-homeassistant-custom-component`.
+- **Property-based tests state an invariant and let the machine pick the inputs.**
+  They live in `tests/unit/test_recurrence_properties.py` and
+  `tests/unit/test_transfer_properties.py`, share `tests/unit/property_strategies.py`,
+  and carry the `property` marker, so `pytest tests/unit -m property` runs only them.
+  Write one when the claim is about a whole domain ("the fast path always agrees with
+  the slow one") rather than about a case ("Jan 31 plus a month is Feb 28"). A case is
+  still better said as an ordinary test.
+  - **Build inputs through the real builders.** A strategy calls `models.build_task` or
+    `assets.build_asset`. A hand-rolled dict is a second description of what a task is,
+    free to drift from the first one.
+  - **A property must hold for every input it can draw, or be scoped until it does.**
+    Widening an assertion to swallow a failure turns a found defect into a hidden one.
+    When the failure is real, scope the generator, then pin the defect with
+    `xfail(strict=True)` and a `@example` carrying the reproducer, so it cannot start
+    passing unnoticed. `test_r4b` is the worked example.
+  - **`HK_HYPOTHESIS_PROFILE` picks the settings**: `dev` (default) shrinks and
+    remembers; `ci` derandomizes so a red run is a real defect and not an unlucky seed;
+    `mutmut` drops the shrink phase. `ci/test-python-unit.sh` and
+    `ci/test-mutation-python.sh` export the right one. `.hypothesis/` is gitignored and
+    is never cached in CI: a gate whose result depends on which branch last filled a
+    cache is not a gate.
+  - **Property tests are scored by the mutation gate, not deselected from it.** They
+    kill mutants the example-based tests leave alive, and the shrink-free profile is
+    what keeps that inside the 45-minute budget. Each property names the mutant it
+    kills, and that claim is checked by mutating the line and watching it go red.
 - **Mutation testing gates every PR** at an 80% mutation score on the code the PR
   changed — see "Mutation testing" below. It is too slow for the
   run-before-you-push loop; run it when you touch the mutable surface.
@@ -398,6 +474,14 @@ rules. Keep the rules and `AGENTS.md` consistent with each other.
   for the service: add the service first (with a `services.yaml` entry and
   `strings.json` localization parity), and have any websocket command delegate to
   the same store method. See `.amazonq/rules/architecture-and-code.md`.
+- **A new persisted field is not done until it round-trips.** The import/export
+  document (`transfer.py`) exports what it does not exclude, so a field added to
+  `models.build_task` or `assets.build_asset` travels in both directions for free —
+  and `tests/unit/test_transfer_roundtrip.py` is what proves it did. When that test
+  goes red, either make the field travel or name it in the matching `EXCLUDED_*`
+  table with a reason. A new *storage section* is caught by
+  `test_transfer_coverage.py` instead. See `.amazonq/rules/architecture-and-code.md`
+  → "Data portability".
 - **Fire a `home_keeper_<noun>_<verb>` event for every state change.** Built by a pure
   builder in `events.py`, fired at the `store.py` chokepoint (including the non-CRUD
   mutation paths), edge-triggered for transitions (`transitions.py` + the coordinator,
@@ -518,8 +602,45 @@ siblings instead of their fakes.
   `/home-keeper` panel.
 - Run locally / in a session: `bash ci/e2e-up.sh` (builds the panel, starts HA, runs
   Playwright, tears down). `KEEP_UP=1` leaves HA running.
-- Env prep: `ci/setup-browser-env.sh` (wired to a Claude Code SessionStart hook).
+- Env prep: `ci/setup-browser-env.sh` (Docker plus the browser). `ci/setup-ci-deps.sh`
+  calls it and also installs the other CI dependencies — see "Session setup" below.
 - Auth: `tests/e2e/global-setup.ts` completes onboarding and performs a real login.
+
+## Session setup
+
+`ci/setup-ci-deps.sh` installs every dependency the CI workflows need: the Python
+packages, the npm packages for each of the four projects, vale and its styles,
+ffmpeg for the walkthrough capture, and (through `ci/setup-browser-env.sh`) the
+Docker daemon and Playwright Chromium. A Claude Code SessionStart hook starts it
+in the background; the log is `/tmp/setup-ci-deps.log`.
+
+The script is idempotent. Each step looks first and skips what is already there,
+so it is safe to run again — and it is the way to try a step that failed. No step
+can stop the script: it always prints a summary of what it installed, skipped and
+failed.
+
+```bash
+bash ci/setup-ci-deps.sh          # install what is missing
+FORCE=1 bash ci/setup-ci-deps.sh  # install everything again
+# Leave one part alone:
+SKIP_PYTHON=1  SKIP_NPM=1  SKIP_VALE=1  SKIP_FFMPEG=1  SKIP_BROWSER=1
+```
+
+Only one run can hold the lock directory, because the hook starts the script in
+the background and two sessions can open together. A second run says so and stops.
+The exit status is 1 when a step failed, so a caller does not have to read the log.
+The `mutmut` pin comes from `mutation.yml` and the Python floor from `pyproject.toml`,
+so the script cannot go stale on its own when CI moves a pin.
+
+**The Python packages go in `.venv`** (git ignores it), not in the system Python.
+Activate it before you run a Python lane: `source .venv/bin/activate`. The script
+picks the interpreter for that virtual environment by test, not by name: it tries
+`3.14` (the Home Assistant floor), then `3.13`, then `3.12`, and keeps the first
+one that can run a unit test file. An old Home Assistant imports on a new Python
+and then breaks at the first fixture, so a name check is not enough. When the
+machine has no interpreter at the floor, pip resolves an older Home Assistant —
+the script says so, and `python ci/check-ha-version.py` gives the detail. mypy and
+the Home Assistant unit lane then test an older API than CI does.
 
 ## Typing & quality scale
 
@@ -527,9 +648,15 @@ siblings instead of their fakes.
   (`manifest.json` `quality_scale`; per-rule ledger in
   `custom_components/home_keeper/quality_scale.yaml`). `lint.yml` runs `mypy` against
   the integration with Home Assistant installed — keep it error-free, and run it
-  locally (`pip install mypy homeassistant && mypy custom_components/home_keeper`)
+  locally (`pip install -r requirements-typing.txt && mypy custom_components/home_keeper`)
   before pushing. User-facing exceptions must be localized (translation keys under
   `strings.json` → `exceptions`); see `.amazonq/rules/`.
+- **`requirements-typing.txt` is the only place a mypy dependency is named.**
+  `lint.yml`, `ha-beta.yml` and `ci/setup-ci-deps.sh` all install from it. A new
+  third-party import needs its stub package added there, or mypy fails with
+  `Library stubs not installed`. Adding it to one workflow is what broke the nightly
+  in #320: `ha-beta.yml` runs on a schedule, so no PR executes its mypy lane, and a
+  list that drifts there stays green through review and goes red on `main`.
 
 ## CI
 
@@ -545,7 +672,9 @@ siblings instead of their fakes.
 - `e2e.yml` — Docker + Playwright; uploads the Playwright report on failure.
 - `ha-beta.yml` — **nightly early warning**, gates nothing. Runs integration, e2e and
   the upgrade suite against `HA_TAG=beta`, plus mypy against a pre-release HA, and
-  files/updates a single `ha-beta-regression` issue on failure.
+  files/updates a single `ha-beta-regression` issue on failure. **No PR runs it**, so
+  every input it needs comes from a file a PR lane reads too — see
+  `requirements-typing.txt` above.
 - `pytest_coverage.yml` + `post_coverage_to_pr.yml` — coverage comment on PRs.
 - `release.yml` — PR-merge-driven release (see RELEASE.md). Its `notify-issues` job
   tells every issue the version fixes which release carries the fix, and closes them

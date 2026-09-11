@@ -6,18 +6,13 @@ All notable changes to Home Keeper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic
 versioning, with PEP 440 pre-release suffixes (`bN`/`aN`/`rcN`) for betas.
 
-## [0.23.0b2]
+## [0.23.0b3]
 
 ### Added
 
 - **Minimal layout.** A Settings toggle switches the task list to a compact grid
   that shows only the name and status. Tap a card for quick actions, or press and
   hold to open its details.
-
-### Fixed
-
-- **Fully managed tasks.** A task whose companion sets every field no longer shows
-  Edit. The page names the companion instead.
 
 ## [0.23.0b1]
 
